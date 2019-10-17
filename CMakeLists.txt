@@ -5,11 +5,16 @@
 cmake_minimum_required(VERSION 3.8)
 set(This MoonUnit)
 
-set(Sources
-    src/main.cpp
+set(Headers
+    src/Runner.hpp
 )
 
-add_executable(${This} ${Sources})
+set(Sources
+    src/main.cpp
+    src/Runner.cpp
+)
+
+add_executable(${This} ${Sources} ${Headers})
 set_target_properties(${This} PROPERTIES
     FOLDER Applications
 )

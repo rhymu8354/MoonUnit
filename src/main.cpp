@@ -7,6 +7,8 @@
  * © 2019 by Richard Walters
  */
 
+#include "Runner.hpp"
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string>
@@ -47,9 +49,13 @@ namespace {
         fprintf(
             stderr,
             (
-                "Usage: MoonUnit\n"
+                "Usage: MoonUnit [--path PATH]\n"
                 "\n"
                 "Do stuff with Lua and unit testing, maybe?\n"
+                "\n"
+                "Options:\n"
+                "    PATH  The relative or absolute path to the folder containing the\n"
+                "          Lua test scripts to run.\n"
             )
         );
     }
@@ -59,6 +65,11 @@ namespace {
      * or the command-line arguments.
      */
     struct Environment {
+        /**
+         * This is the path to the folder which will be searched for Lua
+         * scripts containing unit tests to run.
+         */
+        std::string searchPath = ".";
     };
 
     /**
@@ -86,16 +97,36 @@ namespace {
         Environment& environment
     ) {
         enum class State {
-            Initial,
-        } state = State::Initial;
+            NoContext,
+            SearchPath,
+        } state = State::NoContext;
         for (int i = 1; i < argc; ++i) {
             const std::string arg(argv[i]);
             switch (state) {
-                case State::Initial: {
+                case State::NoContext: {
+                    if (arg == "--path") {
+                        state = State::SearchPath;
+                    }
+                } break;
+
+                case State::SearchPath: {
+                    environment.searchPath = arg;
+                    state = State::NoContext;
                 } break;
 
                 default: break;
             }
+        }
+        switch (state) {
+            case State::SearchPath: {
+                fprintf(
+                    stderr,
+                    "path expected for --path option\n"
+                );
+                return false;
+            }
+
+            default: break;
         }
         return true;
     }
@@ -126,9 +157,48 @@ int main(int argc, char* argv[]) {
         return EXIT_FAILURE;
     }
 
-    // Do something observable! :LUL:
-    printf("Hello, World!\n");
+    // Execute all Lua scripts in the configured search path.
+    std::vector< std::string > filePaths;
+    SystemAbstractions::File::ListDirectory(
+        environment.searchPath,
+        filePaths
+    );
+    bool success = true;
+    for (const auto& filePath: filePaths) {
+        static const std::string luaFileExtension = ".lua";
+        static const auto luaFileExtensionLength = luaFileExtension.length();
+        if (
+            (filePath.length() >= luaFileExtensionLength)
+            && (filePath.substr(filePath.length() - luaFileExtensionLength) == luaFileExtension)
+        ) {
+            printf("Executing %s:\n", filePath.c_str());
+            SystemAbstractions::File file(filePath);
+            const auto script = ReadFile(file);
+            if (script.empty()) {
+                fprintf(stderr, "Error reading Lua script '%s'\n", filePath.c_str());
+                success = false;
+            } else {
+                Runner runner;
+                const auto errorMessage = runner.LoadScript(filePath, script);
+                if (errorMessage.empty()) {
+                    printf("  OK\n");
+                    const auto testNames = runner.GetTestNames();
+                    if (testNames.empty()) {
+                        printf("  (No tests found)\n");
+                    } else {
+                        printf ("  Tests:\n");
+                        for (const auto& testName: testNames) {
+                            printf ("    %s\n", testName.c_str());
+                        }
+                    }
+                } else {
+                    fprintf(stderr, "  ERROR: %s\n", errorMessage.c_str());
+                    success = false;
+                }
+            }
+        }
+    }
 
     // Done.
-    return EXIT_SUCCESS;
+    return success ? EXIT_SUCCESS : EXIT_FAILURE;
 }
