@@ -3,7 +3,7 @@
 # © 2019 by Richard Walters
 
 cmake_minimum_required(VERSION 3.8)
-set(This MoonUnit)
+set(This MoonUnitTests)
 
 set(Headers
     src/Runner.hpp
@@ -29,3 +29,8 @@ if(UNIX AND NOT APPLE)
         -static-libstdc++
     )
 endif(UNIX AND NOT APPLE)
+
+add_test(
+    NAME ${This}
+    COMMAND "${This} --path ../../MoonUnit"
+)

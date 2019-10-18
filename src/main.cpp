@@ -70,6 +70,8 @@ namespace {
          * scripts containing unit tests to run.
          */
         std::string searchPath = ".";
+
+        std::string reportPath;
     };
 
     /**
@@ -96,16 +98,85 @@ namespace {
         char* argv[],
         Environment& environment
     ) {
+        FILE* log = fopen(
+            (
+                SystemAbstractions::File::GetExeParentDirectory()
+                + "/log.txt"
+            ).c_str(),
+            "at"
+        );
+        fprintf(log, "MoonUnit executed; arguments:\n");
         enum class State {
             NoContext,
             SearchPath,
         } state = State::NoContext;
         for (int i = 1; i < argc; ++i) {
             const std::string arg(argv[i]);
+            fprintf(log, "  %s\n", arg.c_str());
             switch (state) {
                 case State::NoContext: {
+                    static const std::string reportArgumentPrefix = "--gtest_output=xml:";
+                    static const auto reportArgumentPrefixLength = reportArgumentPrefix.length();
                     if (arg == "--path") {
                         state = State::SearchPath;
+                    } else if (arg == "--help") {
+                        printf(
+                            "Running main() from ..\\googletest\\googletest\\src\\gtest_main.cc\n"
+                            "This program contains tests written using Google Test. You can use the\n"
+                            "following command line flags to control its behavior:\n"
+                            "\n"
+                            "Test Selection:\n"
+                            "  --gtest_list_tests\n"
+                            "      List the names of all tests instead of running them. The name of\n"
+                            "      TEST(Foo, Bar) is \"Foo.Bar\".\n"
+                            "  --gtest_filter=POSTIVE_PATTERNS[-NEGATIVE_PATTERNS]\n"
+                            "      Run only the tests whose name matches one of the positive patterns but\n"
+                            "      none of the negative patterns. '?' matches any single character; '*'\n"
+                            "      matches any substring; ':' separates two patterns.\n"
+                            "  --gtest_also_run_disabled_tests\n"
+                            "      Run all disabled tests too.\n"
+                            "\n"
+                            "Test Execution:\n"
+                            "  --gtest_repeat=[COUNT]\n"
+                            "      Run the tests repeatedly; use a negative count to repeat forever.\n"
+                            "  --gtest_shuffle\n"
+                            "      Randomize tests' orders on every iteration.\n"
+                            "  --gtest_random_seed=[NUMBER]\n"
+                            "      Random number seed to use for shuffling test orders (between 1 and\n"
+                            "      99999, or 0 to use a seed based on the current time).\n"
+                            "\n"
+                            "Test Output:\n"
+                            "  --gtest_color=(yes|no|auto)\n"
+                            "      Enable/disable colored output. The default is auto.\n"
+                            "  --gtest_print_time=0\n"
+                            "      Don't print the elapsed time of each test.\n"
+                            "  --gtest_output=(json|xml)[:DIRECTORY_PATH\\|:FILE_PATH]\n"
+                            "      Generate a JSON or XML report in the given directory or with the given\n"
+                            "      file name. FILE_PATH defaults to test_detail.xml.\n"
+                            "\n"
+                            "Assertion Behavior:\n"
+                            "  --gtest_break_on_failure\n"
+                            "      Turn assertion failures into debugger break-points.\n"
+                            "  --gtest_throw_on_failure\n"
+                            "      Turn assertion failures into C++ exceptions for use by an external\n"
+                            "      test framework.\n"
+                            "  --gtest_catch_exceptions=0\n"
+                            "      Do not report exceptions as test failures. Instead, allow them\n"
+                            "      to crash the program or throw a pop-up (on Windows).\n"
+                            "\n"
+                            "Except for --gtest_list_tests, you can alternatively set the corresponding\n"
+                            "environment variable of a flag (all letters in upper-case). For example, to\n"
+                            "disable colored text output, you can either specify --gtest_color=no or set\n"
+                            "the GTEST_COLOR environment variable to no.\n"
+                            "\n"
+                            "For more information, please read the Google Test documentation at\n"
+                            "https://github.com/google/googletest/. If you find a bug in Google Test\n"
+                            "(not one in your own code or tests), please report it to\n"
+                            "<googletestframework@googlegroups.com>.\n"
+                        );
+                        exit(0);
+                    } else if (arg.substr(0, reportArgumentPrefixLength) == reportArgumentPrefix) {
+                        environment.reportPath = arg.substr(reportArgumentPrefixLength);
                     }
                 } break;
 
@@ -117,6 +188,7 @@ namespace {
                 default: break;
             }
         }
+        (void)fclose(log);
         switch (state) {
             case State::SearchPath: {
                 fprintf(
@@ -179,16 +251,41 @@ int main(int argc, char* argv[]) {
                 success = false;
             } else {
                 Runner runner;
-                const auto errorMessage = runner.LoadScript(filePath, script);
+                auto errorMessage = runner.LoadScript(filePath, script);
                 if (errorMessage.empty()) {
-                    printf("  OK\n");
+                    if (!environment.reportPath.empty()) {
+                        const auto report = runner.GetReport();
+                        FILE* reportFile = fopen(
+                            environment.reportPath.c_str(),
+                            "wt"
+                        );
+                        (void)fwrite(report.data(), report.length(), 1, reportFile);
+                        (void)fclose(reportFile);
+                    }
                     const auto testNames = runner.GetTestNames();
                     if (testNames.empty()) {
                         printf("  (No tests found)\n");
                     } else {
-                        printf ("  Tests:\n");
                         for (const auto& testName: testNames) {
-                            printf ("    %s\n", testName.c_str());
+                            printf("  %s...", testName.c_str());
+                            if (runner.RunTest(testName)) {
+                                printf("** PASS **\n");
+                            } else {
+                                printf("** FAIL **\n");
+                                success = false;
+                            }
+                            const auto diagnostics = runner.GetLastTestDiagnostics();
+                            if (!diagnostics.empty()) {
+                                fprintf(stderr, "------------------------\n");
+                                for (const auto& line: diagnostics) {
+                                    (void)fwrite(
+                                        line.data(),
+                                        line.length(), 1,
+                                        stderr
+                                    );
+                                }
+                                fprintf(stderr, "------------------------\n");
+                            }
                         }
                     }
                 } else {
