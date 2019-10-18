@@ -13,8 +13,60 @@
 #include <stdio.h>
 #include <string>
 #include <SystemAbstractions/File.hpp>
+#include <SystemAbstractions/StringExtensions.hpp>
+#include <unordered_set>
+#include <vector>
 
 namespace {
+
+    /**
+     * This function replaces all backslashes with forward slashes
+     * in the given string.
+     *
+     * @param[in] in
+     *     This is the string to fix.
+     *
+     * @return
+     *     A copy of the given string, with all backslashes replaced
+     *     with forward slashes, is returned.
+     */
+    std::string FixPathDelimiters(const std::string& in) {
+        std::string out;
+        for (auto c: in) {
+            if (c == '\\') {
+                out.push_back('/');
+            } else {
+                out.push_back(c);
+            }
+        }
+        return out;
+    }
+
+    std::string CanonicalPath(std::string path) {
+        path = FixPathDelimiters(path);
+        if (!SystemAbstractions::File::IsAbsolutePath(path)) {
+            path = (
+                SystemAbstractions::File::GetWorkingDirectory()
+                + "/"
+                + path
+            );
+        }
+        auto segmentsIn = SystemAbstractions::Split(path, '/');
+        decltype(segmentsIn) segmentsOut;
+        for (const auto& segment: segmentsIn) {
+            if (segment == ".") {
+                continue;
+            }
+            if (segment == "..") {
+                if (segmentsOut.size() > 1) {
+                    segmentsOut.pop_back();
+                }
+            } else {
+                segmentsOut.push_back(segment);
+            }
+        }
+        return SystemAbstractions::Join(segmentsOut, "/");
+    }
 
     /**
      * Read and return the entire contents of the given file.
@@ -229,69 +281,67 @@ int main(int argc, char* argv[]) {
         return EXIT_FAILURE;
     }
 
-    // Execute all Lua scripts in the configured search path.
-    std::vector< std::string > filePaths;
-    SystemAbstractions::File::ListDirectory(
-        environment.searchPath,
-        filePaths
+    // Locate the highest-level ancestor folder of the current working
+    // folder that contains a ".moonunit" file, and configure the runner
+    // using it (and any other ".moonunit" files found indirectly).
+    Runner runner;
+    const auto searchPathSegments = SystemAbstractions::Split(
+        CanonicalPath(environment.searchPath),
+        '/'
     );
-    bool success = true;
-    for (const auto& filePath: filePaths) {
-        static const std::string luaFileExtension = ".lua";
-        static const auto luaFileExtensionLength = luaFileExtension.length();
-        if (
-            (filePath.length() >= luaFileExtensionLength)
-            && (filePath.substr(filePath.length() - luaFileExtensionLength) == luaFileExtension)
-        ) {
-            printf("Executing %s:\n", filePath.c_str());
-            SystemAbstractions::File file(filePath);
-            const auto script = ReadFile(file);
-            if (script.empty()) {
-                fprintf(stderr, "Error reading Lua script '%s'\n", filePath.c_str());
-                success = false;
-            } else {
-                Runner runner;
-                auto errorMessage = runner.LoadScript(filePath, script);
-                if (errorMessage.empty()) {
-                    if (!environment.reportPath.empty()) {
-                        const auto report = runner.GetReport();
-                        FILE* reportFile = fopen(
-                            environment.reportPath.c_str(),
-                            "wt"
-                        );
-                        (void)fwrite(report.data(), report.length(), 1, reportFile);
-                        (void)fclose(reportFile);
-                    }
-                    const auto testNames = runner.GetTestNames();
-                    if (testNames.empty()) {
-                        printf("  (No tests found)\n");
-                    } else {
-                        for (const auto& testName: testNames) {
-                            printf("  %s...", testName.c_str());
-                            if (runner.RunTest(testName)) {
-                                printf("** PASS **\n");
-                            } else {
-                                printf("** FAIL **\n");
-                                success = false;
-                            }
-                            const auto diagnostics = runner.GetLastTestDiagnostics();
-                            if (!diagnostics.empty()) {
-                                fprintf(stderr, "------------------------\n");
-                                for (const auto& line: diagnostics) {
-                                    (void)fwrite(
-                                        line.data(),
-                                        line.length(), 1,
-                                        stderr
-                                    );
-                                }
-                                fprintf(stderr, "------------------------\n");
-                            }
-                        }
-                    }
-                } else {
-                    fprintf(stderr, "  ERROR: %s\n", errorMessage.c_str());
-                    success = false;
+    for (size_t i = 1; i <= searchPathSegments.size(); ++i) {
+        std::vector< std::string > possibleConfigurationFilePathSegments(
+            searchPathSegments.begin(),
+            searchPathSegments.begin() + i
+        );
+        possibleConfigurationFilePathSegments.push_back(".moonunit");
+        SystemAbstractions::File possibleConfigurationFile(
+            SystemAbstractions::Join(possibleConfigurationFilePathSegments, "/")
+        );
+        if (possibleConfigurationFile.IsExisting()) {
+            runner.Configure(
+                possibleConfigurationFile,
+                [](const std::string& message){
+                    (void)fwrite(message.data(), message.length(), 1, stderr);
                 }
+            );
+        }
+    }
+
+    // Run all unit tests.
+    bool success = true;
+    for (const auto& testSuiteName: runner.GetTestSuiteNames()) {
+        for (const auto& testName: runner.GetTestNames(testSuiteName)) {
+            printf(
+                "%s.%s...",
+                testSuiteName.c_str(),
+                testName.c_str()
+            );
+            std::vector< std::string > errorMessages;
+            if (
+                runner.RunTest(
+                    testSuiteName,
+                    testName,
+                    [&](const std::string& message){
+                        errorMessages.push_back(message);
+                    }
+                )
+            ) {
+                printf("** PASS **\n");
+            } else {
+                printf("** FAIL **\n");
+                success = false;
+            }
+            if (!errorMessages.empty()) {
+                fprintf(stderr, "------------------------\n");
+                for (const auto& line: errorMessages) {
+                    (void)fwrite(
+                        line.data(),
+                        line.length(), 1,
+                        stderr
+                    );
+                }
+                fprintf(stderr, "------------------------\n");
             }
         }
     }
