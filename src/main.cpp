@@ -14,6 +14,7 @@
 #include <string>
 #include <SystemAbstractions/File.hpp>
 #include <SystemAbstractions/StringExtensions.hpp>
+#include <SystemAbstractions/Time.hpp>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -324,9 +325,17 @@ int main(int argc, char* argv[]) {
     // List or run all unit tests.
     bool success = true;
     std::unordered_map< std::string, std::unordered_set< std::string > > selectedTests;
-    size_t totalTests = 0;
-    if (!environment.filter.empty()) {
+    size_t totalTests = 0, totalTestSuites = 0;
+    if (environment.filter.empty()) {
+        const auto testSuiteNames = runner.GetTestSuiteNames();
+        totalTestSuites = testSuiteNames.size();
+        for (const auto& testSuiteName: testSuiteNames) {
+            totalTests += runner.GetTestNames(testSuiteName).size();
+        }
+    } else {
+        printf("Note: Google Test filter = %s\n", environment.filter.c_str());
         for (const auto& filter: SystemAbstractions::Split(environment.filter, ':')) {
+            ++totalTestSuites;
             const auto delimiterIndex = filter.find('.');
             if (delimiterIndex != std::string::npos) {
                 const auto testSuiteName = filter.substr(0, delimiterIndex);
@@ -336,19 +345,19 @@ int main(int argc, char* argv[]) {
                 }
             }
         }
-        printf(
-            "Note: Google Test filter = %s\n"
-            "[==========] Running %zu test%s from %zu test suite%s.\n"
-            "[----------] Global test environment set-up.\n",
-            environment.filter.c_str(),
-            totalTests,
-            ((totalTests == 1) ? "" : "s"),
-            selectedTests.size(),
-            ((selectedTests.size() == 1) ? "" : "s")
-        );
     }
+    printf(
+        "[==========] Running %zu test%s from %zu test suite%s.\n"
+        "[----------] Global test environment set-up.\n",
+        totalTests,
+        ((totalTests == 1) ? "" : "s"),
+        totalTestSuites,
+        ((totalTestSuites == 1) ? "" : "s")
+    );
     size_t passed = 0;
     std::vector< std::string > failed;
+    SystemAbstractions::Time timer;
+    const auto runnerStartTime = timer.GetTime();
     for (const auto& testSuiteName: runner.GetTestSuiteNames()) {
         const auto selectedTestsEntry = selectedTests.find(testSuiteName);
         if (
@@ -367,6 +376,7 @@ int main(int argc, char* argv[]) {
                 testSuiteName.c_str()
             );
         }
+        const auto testSuiteStartTime = timer.GetTime();
         for (const auto& testName: runner.GetTestNames(testSuiteName)) {
             if (selectedTestsEntry != selectedTests.end()) {
                 const auto selectedTestEntry = selectedTestsEntry->second.find(testName);
@@ -383,20 +393,22 @@ int main(int argc, char* argv[]) {
                     testName.c_str()
                 );
                 std::vector< std::string > errorMessages;
-                if (
-                    runner.RunTest(
-                        testSuiteName,
-                        testName,
-                        [&](const std::string& message){
-                            errorMessages.push_back(message);
-                        }
-                    )
-                ) {
+                const auto testStartTime = timer.GetTime();
+                const auto testPassed = runner.RunTest(
+                    testSuiteName,
+                    testName,
+                    [&](const std::string& message){
+                        errorMessages.push_back(message);
+                    }
+                );
+                const auto testEndTime = timer.GetTime();
+                if (testPassed) {
                     ++passed;
                     printf(
-                        "[       OK ] %s.%s (10 ms)\n",
+                        "[       OK ] %s.%s (%d ms)\n",
                         testSuiteName.c_str(),
-                        testName.c_str()
+                        testName.c_str(),
+                        (int)ceil((testEndTime - testStartTime) * 1000.0)
                     );
                 } else {
                     failed.push_back(
@@ -416,51 +428,60 @@ int main(int argc, char* argv[]) {
                         }
                     }
                     printf(
-                        "[  FAILED  ] %s.%s (10 ms)\n",
+                        "[  FAILED  ] %s.%s (%d ms)\n",
                         testSuiteName.c_str(),
-                        testName.c_str()
+                        testName.c_str(),
+                        (int)ceil((testEndTime - testStartTime) * 1000.0)
                     );
                     success = false;
                 }
             }
         }
+        const auto testSuiteEndTime = timer.GetTime();
         if (
             !environment.listTests
             && (selectedTestsEntry != selectedTests.end())
         ) {
             printf(
-                "[----------] %zu test%s from %s (10 ms total)\n\n",
+                "[----------] %zu test%s from %s (%d ms total)\n\n",
                 selectedTestsEntry->second.size(),
                 ((selectedTestsEntry->second.size() == 1) ? "" : "s"),
-                testSuiteName.c_str()
+                testSuiteName.c_str(),
+                (int)ceil((testSuiteEndTime - testSuiteStartTime) * 1000.0)
             );
         }
     }
-    if (!environment.filter.empty()) {
+    const auto runnerEndTime = timer.GetTime();
+    printf(
+        "[----------] Global test environment tear-down\n"
+        "[==========] %zu test%s from %zu test suite%s ran. (%d ms total)\n"
+        "[  PASSED  ] %zu test%s.\n",
+        totalTests,
+        ((totalTests == 1) ? "" : "s"),
+        totalTestSuites,
+        ((totalTestSuites == 1) ? "" : "s"),
+        (int)ceil((runnerEndTime - runnerStartTime) * 1000.0),
+        passed,
+        ((passed == 1) ? "" : "s")
+    );
+    if (!failed.empty()) {
         printf(
-            "[----------] Global test environment tear-down\n"
-            "[==========] %zu test%s from %zu test suite%s ran. (10 ms total)\n"
-            "[  PASSED  ] %zu test%s.\n",
-            totalTests,
-            ((totalTests == 1) ? "" : "s"),
-            selectedTests.size(),
-            ((selectedTests.size() == 1) ? "" : "s"),
-            passed,
-            ((passed == 1) ? "" : "s")
+            "[  FAILED  ] %zu test%s, listed below:\n",
+            failed.size(),
+            ((failed.size() == 1) ? "" : "s")
         );
-        if (!failed.empty()) {
+        for (const auto& instance: failed) {
             printf(
-                "[  FAILED  ] %zu test%s, listed below:\n",
-                failed.size(),
-                ((failed.size() == 1) ? "" : "s")
+                "[  FAILED  ] %s\n",
+                instance.c_str()
             );
-            for (const auto& instance: failed) {
-                printf(
-                    "[  FAILED  ] %s\n",
-                    instance.c_str()
-                );
-            }
         }
+        printf(
+            "\n"
+            " %zu FAILED TEST%s\n",
+            failed.size(),
+            ((failed.size() == 1) ? "" : "S")
+        );
     }
 
     // Generate report if requested.
