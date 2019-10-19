@@ -146,7 +146,9 @@ are recommended toolchains for popular platforms.
 
 ## Building
 
-This library is not intended to stand alone.  It is intended to be included in a larger solution which uses [CMake](https://cmake.org/) to generate the build system and build applications which will link with the library.
+This project may be used stand-alone or as part of a larger project.  Either
+way, the included `CMakeLists.txt` file is intended to be used with
+[CMake](https://cmake.org/) to generate the build system and build the project.
 
 There are two distinct steps in the build process:
 
@@ -155,8 +157,11 @@ There are two distinct steps in the build process:
 
 ### Prerequisites
 
+The following tools and dependencies are required:
+
 * [CMake](https://cmake.org/) version 3.8 or newer
-* C++11 toolchain compatible with CMake for your development platform (e.g. [Visual Studio](https://www.visualstudio.com/) on Windows)
+* C++11 toolchain compatible with CMake for your development platform (e.g.
+  [Visual Studio](https://www.visualstudio.com/) on Windows)
 * [LuaLibrary](https://github.com/rhymu8354/lua.git) - a fork of
   [Lua](http://www.lua.org/) which includes a `CMakeLists.txt` file for
   incorporation into a CMake-based build system
@@ -164,9 +169,27 @@ There are two distinct steps in the build process:
   cross-platform adapter library for system services whose APIs vary from one
   operating system to another
 
+Several dependencies are available in source-code format.  A file `main.xml` is
+provided which is designed to work with the
+[mugit](https://pypi.org/project/mugit/) tool to clone the separate git
+repositories of the project's dependencies.  Given that `mugit` is installed,
+and this project has been cloned locally, use the following commands to easily
+clone the dependency project repositories to the proper locations within the
+project's directory structure:
+
+    mugit select main
+    mugit pull
+
+Alternatively, refer to the `main.xml` file.  Although it is in XML format,
+the markup should not be too difficult to understand.  It merely lists the
+locations (both online and locally) of the other git repositories
+containing the project's dependencies, along with which branch should
+be cloned for each repository.
+
 ### Build system generation
 
-Generate the build system using [CMake](https://cmake.org/) from the solution root.  For example:
+Generate the build system using [CMake](https://cmake.org/) from the solution
+root.  For example:
 
 ```bash
 mkdir build

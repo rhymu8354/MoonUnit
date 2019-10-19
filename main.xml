@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<workspace>
+    <repositories>
+        <repository
+            path="SystemAbstractions"
+            url="git@github.com:rhymu8354/SystemAbstractions.git"
+            branch="master"
+            />
+        <repository
+            path="lua"
+            url="git@github.com:rhymu8354/lua.git"
+            branch="master"
+            />
+    </repositories>
+</workspace>
