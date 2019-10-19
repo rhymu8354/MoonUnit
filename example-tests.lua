@@ -1,19 +1,9 @@
--- This is an example Lua script with unit tests that can be located
+-- This contains example Lua unit test suites registered with
 -- and executed by MoonUnit.
 
-function square(x)
-    return x * x;
-end
-
-function buggy_abs(x)
-    if x < -1 then
-        return -x
-    else
-        return x
-    end
-end
-
 if not moonunit then return end
+
+require("example-code")
 
 moonunit:test("examples_passing", "square_zero", function()
     local x = 0

@@ -312,6 +312,8 @@ struct Runner::Impl {
         const std::string& filePath,
         std::function< void() > fn
     ) {
+        const auto originalWorkingDirectory = SystemAbstractions::File::GetWorkingDirectory();
+        SystemAbstractions::File::SetWorkingDirectory(ParentFolderPath(filePath));
         lua_settop(lua, 0);
         lua_pushcfunction(lua, LuaTraceback);
         LuaReaderState luaReaderState;
@@ -342,6 +344,7 @@ struct Runner::Impl {
             } break;
         }
         lua_settop(lua, 0);
+        SystemAbstractions::File::SetWorkingDirectory(originalWorkingDirectory);
         return errorMessage;
     }
 
