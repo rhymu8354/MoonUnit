@@ -40,6 +40,15 @@ if(ParentDirectory STREQUAL "")
         endforeach(flag)
     endif(MSVC AND RUNTIME_STATIC_LINKAGE)
 
+    # Keep Google Test's linkage of the runtime in sync with our own.
+    if(MSVC)
+        if(RUNTIME_STATIC_LINKAGE)
+            set(gtest_force_shared_crt OFF CACHE BOOL "Use shared (DLL) run-time lib even when Google Test is built as static lib." FORCE)
+        else(RUNTIME_STATIC_LINKAGE)
+            set(gtest_force_shared_crt ON CACHE BOOL "Use shared (DLL) run-time lib even when Google Test is built as static lib." FORCE)
+        endif(RUNTIME_STATIC_LINKAGE)
+    endif(MSVC)
+
     # Organize applications, libraries, etc. in folders in the IDE.
     set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
@@ -59,6 +68,14 @@ if(ParentDirectory STREQUAL "")
 
     # Suppress Microsoft warnings about functions being unsafe.
     add_definitions(-D_CRT_SECURE_NO_WARNINGS -D_SCL_SECURE_NO_WARNINGS)
+
+    # Google Test
+    set(BUILD_GTEST ON CACHE BOOL "Builds the googletest subproject" FORCE)
+    set(BUILD_GMOCK OFF CACHE BOOL "Builds the googlemock subproject" FORCE)
+    add_subdirectory(googletest)
+    set_target_properties(gtest gtest_main PROPERTIES
+        FOLDER Libraries
+    )
 
     # Lua
     add_subdirectory(lua)
