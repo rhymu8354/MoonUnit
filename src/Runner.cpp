@@ -1047,19 +1047,20 @@ void Runner::Configure(
             SystemAbstractions::File possibleOtherConfigurationFile(searchPath + "/.moonunit");
             if (possibleOtherConfigurationFile.IsExisting()) {
                 Configure(possibleOtherConfigurationFile, errorMessageDelegate);
-            }
-            std::vector< std::string > filePaths;
-            SystemAbstractions::File::ListDirectory(searchPath, filePaths);
-            bool success = true;
-            for (const auto& filePath: filePaths) {
-                if (
-                    (filePath.length() >= luaFileExtensionLength)
-                    && (filePath.substr(filePath.length() - luaFileExtensionLength) == luaFileExtension)
-                ) {
-                    impl_->LoadTestSuite(
-                        SystemAbstractions::File(filePath),
-                        errorMessageDelegate
-                    );
+            } else {
+                std::vector< std::string > filePaths;
+                SystemAbstractions::File::ListDirectory(searchPath, filePaths);
+                bool success = true;
+                for (const auto& filePath: filePaths) {
+                    if (
+                        (filePath.length() >= luaFileExtensionLength)
+                        && (filePath.substr(filePath.length() - luaFileExtensionLength) == luaFileExtension)
+                    ) {
+                        impl_->LoadTestSuite(
+                            SystemAbstractions::File(filePath),
+                            errorMessageDelegate
+                        );
+                    }
                 }
             }
         } else {
