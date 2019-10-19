@@ -119,6 +119,8 @@ namespace {
             "                [--gtest_filter=FILTER]\n"
             "                [--gtest_output=xml:REPORT]\n"
             "\n"
+            "   or: MoonUnit --help\n"
+            "\n"
             "Options:\n"
             "\n"
             "    PATH    The relative or absolute path to a folder which contains\n"
