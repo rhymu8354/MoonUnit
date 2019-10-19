@@ -162,6 +162,8 @@ The following tools and dependencies are required:
 * [CMake](https://cmake.org/) version 3.8 or newer
 * C++11 toolchain compatible with CMake for your development platform (e.g.
   [Visual Studio](https://www.visualstudio.com/) on Windows)
+* [googletest](https://github.com/google/googletest.git) - The Google C++ Test
+  framework (only needed to test the `SystemAbstractions` dependency project)
 * [LuaLibrary](https://github.com/rhymu8354/lua.git) - a fork of
   [Lua](http://www.lua.org/) which includes a `CMakeLists.txt` file for
   incorporation into a CMake-based build system

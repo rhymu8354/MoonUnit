@@ -1,0 +1,8 @@
+/lua/
+/googletest/
+/SystemAbstractions/
+
+/.vscode/
+
+/build*/
+/stage/
