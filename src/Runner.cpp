@@ -427,7 +427,7 @@ struct Runner::Impl {
      *     This points to the state of the Lua interpreter.
      */
     static int LuaAssertEq(lua_State* lua) {
-        auto self = (Impl*)luaL_checkudata(lua, 1, "moonunit");
+        auto self = *(Impl**)luaL_checkudata(lua, 1, "moonunit");
         if (!lua_compare(lua, 2, 3, LUA_OPEQ)) {
             luaL_error(
                 lua,
@@ -440,8 +440,171 @@ struct Runner::Impl {
     }
 
     /**
+     * Compare the value at the top of the Lua stack and throw an error if
+     * it is not considered "falsey".
+     *
+     * This is registered as the "assert_false" method of the "moonunit"
+     * singleton provided to Lua scripts.
+     *
+     * @param[in] lua
+     *     This points to the state of the Lua interpreter.
+     */
+    static int LuaAssertFalse(lua_State* lua) {
+        auto self = *(Impl**)luaL_checkudata(lua, 1, "moonunit");
+        if (lua_toboolean(lua, 2)) {
+            const std::string actual = luaL_tolstring(lua, 2, NULL);
+            lua_pop(lua, 1);
+            luaL_error(
+                lua,
+                "Expected '%s' to be false\n",
+                actual.c_str()
+            );
+        }
+        return 0;
+    }
+
+    /**
+     * Compare the two values at the top of the Lua stack and throw an error if
+     * the first is not greater than or equal to the second.
+     *
+     * This is registered as the "assert_ge" method of the "moonunit" singleton
+     * provided to Lua scripts.
+     *
+     * @param[in] lua
+     *     This points to the state of the Lua interpreter.
+     */
+    static int LuaAssertGe(lua_State* lua) {
+        auto self = *(Impl**)luaL_checkudata(lua, 1, "moonunit");
+        if (lua_compare(lua, 2, 3, LUA_OPLT)) {
+            luaL_error(
+                lua,
+                "expected '%s' >= '%s'\n",
+                lua_tostring(lua, 2),
+                lua_tostring(lua, 3)
+            );
+        }
+        return 0;
+    }
+
+    /**
+     * Compare the two values at the top of the Lua stack and throw an error if
+     * the first is not greater than the second.
+     *
+     * This is registered as the "assert_gt" method of the "moonunit" singleton
+     * provided to Lua scripts.
+     *
+     * @param[in] lua
+     *     This points to the state of the Lua interpreter.
+     */
+    static int LuaAssertGt(lua_State* lua) {
+        auto self = *(Impl**)luaL_checkudata(lua, 1, "moonunit");
+        if (lua_compare(lua, 2, 3, LUA_OPLE)) {
+            luaL_error(
+                lua,
+                "expected '%s' > '%s'\n",
+                lua_tostring(lua, 2),
+                lua_tostring(lua, 3)
+            );
+        }
+        return 0;
+    }
+
+    /**
+     * Compare the two values at the top of the Lua stack and throw an error if
+     * the first is not less than or equal to the second.
+     *
+     * This is registered as the "assert_le" method of the "moonunit" singleton
+     * provided to Lua scripts.
+     *
+     * @param[in] lua
+     *     This points to the state of the Lua interpreter.
+     */
+    static int LuaAssertLe(lua_State* lua) {
+        auto self = *(Impl**)luaL_checkudata(lua, 1, "moonunit");
+        if (!lua_compare(lua, 2, 3, LUA_OPLE)) {
+            luaL_error(
+                lua,
+                "expected '%s' <= '%s'\n",
+                lua_tostring(lua, 2),
+                lua_tostring(lua, 3)
+            );
+        }
+        return 0;
+    }
+
+    /**
+     * Compare the two values at the top of the Lua stack and throw an error if
+     * the first is not less than the second.
+     *
+     * This is registered as the "assert_lt" method of the "moonunit" singleton
+     * provided to Lua scripts.
+     *
+     * @param[in] lua
+     *     This points to the state of the Lua interpreter.
+     */
+    static int LuaAssertLt(lua_State* lua) {
+        auto self = *(Impl**)luaL_checkudata(lua, 1, "moonunit");
+        if (!lua_compare(lua, 2, 3, LUA_OPLT)) {
+            luaL_error(
+                lua,
+                "expected '%s' < '%s'\n",
+                lua_tostring(lua, 2),
+                lua_tostring(lua, 3)
+            );
+        }
+        return 0;
+    }
+
+    /**
+     * Compare the two values at the top of the Lua stack and throw an error if
+     * they are equal.
+     *
+     * This is registered as the "assert_ne" method of the "moonunit" singleton
+     * provided to Lua scripts.
+     *
+     * @param[in] lua
+     *     This points to the state of the Lua interpreter.
+     */
+    static int LuaAssertNe(lua_State* lua) {
+        auto self = *(Impl**)luaL_checkudata(lua, 1, "moonunit");
+        if (lua_compare(lua, 2, 3, LUA_OPEQ)) {
+            luaL_error(
+                lua,
+                "Expected not '%s', actual was '%s'\n",
+                lua_tostring(lua, 2),
+                lua_tostring(lua, 3)
+            );
+        }
+        return 0;
+    }
+
+    /**
+     * Compare the value at the top of the Lua stack and throw an error if
+     * it is not considered "truthy".
+     *
+     * This is registered as the "assert_true" method of the "moonunit"
+     * singleton provided to Lua scripts.
+     *
+     * @param[in] lua
+     *     This points to the state of the Lua interpreter.
+     */
+    static int LuaAssertTrue(lua_State* lua) {
+        auto self = *(Impl**)luaL_checkudata(lua, 1, "moonunit");
+        if (!lua_toboolean(lua, 2)) {
+            const std::string actual = luaL_tolstring(lua, 2, NULL);
+            lua_pop(lua, 1);
+            luaL_error(
+                lua,
+                "Expected '%s' to be true\n",
+                actual.c_str()
+            );
+        }
+        return 0;
+    }
+
+    /**
      * Compare the two values at the top of the Lua stack and mark the current
-     * task as failed if the two values are not equal.
+     * test as failed if the two values are not equal.
      *
      * This is registered as the "expect_eq" method of the "moonunit" singleton
      * provided to Lua scripts.
@@ -458,6 +621,239 @@ struct Runner::Impl {
                     "Expected '%s', actual was '%s'\n",
                     lua_tostring(lua, 2),
                     lua_tostring(lua, 3)
+                )
+            );
+            luaL_traceback(lua, lua, NULL, 1);
+            self->errorMessageDelegate(
+                SystemAbstractions::sprintf(
+                    "%s\n",
+                    lua_tostring(lua, -1)
+                )
+            );
+            lua_pop(lua, 1);
+        }
+        return 0;
+    }
+
+    /**
+     * Compare the value at the top of the Lua stack and mark the current test
+     * as failed if it is not considered "falsey".
+     *
+     * This is registered as the "expect_false" method of the "moonunit"
+     * singleton provided to Lua scripts.
+     *
+     * @param[in] lua
+     *     This points to the state of the Lua interpreter.
+     */
+    static int LuaExpectFalse(lua_State* lua) {
+        auto self = *(Impl**)luaL_checkudata(lua, 1, "moonunit");
+        if (lua_toboolean(lua, 2)) {
+            self->currentTestFailed = true;
+            const std::string actual = luaL_tolstring(lua, 2, NULL);
+            lua_pop(lua, 1);
+            self->errorMessageDelegate(
+                SystemAbstractions::sprintf(
+                    "Expected '%s' to be false\n",
+                    actual.c_str()
+                )
+            );
+            luaL_traceback(lua, lua, NULL, 1);
+            self->errorMessageDelegate(
+                SystemAbstractions::sprintf(
+                    "%s\n",
+                    lua_tostring(lua, -1)
+                )
+            );
+            lua_pop(lua, 1);
+        }
+        return 0;
+    }
+
+    /**
+     * Compare the two values at the top of the Lua stack and mark the current
+     * test as failed if the first is not greater than or equal to the second.
+     *
+     * This is registered as the "expect_ge" method of the "moonunit" singleton
+     * provided to Lua scripts.
+     *
+     * @param[in] lua
+     *     This points to the state of the Lua interpreter.
+     */
+    static int LuaExpectGe(lua_State* lua) {
+        auto self = *(Impl**)luaL_checkudata(lua, 1, "moonunit");
+        if (lua_compare(lua, 2, 3, LUA_OPLT)) {
+            self->currentTestFailed = true;
+            self->errorMessageDelegate(
+                SystemAbstractions::sprintf(
+                    "expected '%s' >= '%s'\n",
+                    lua_tostring(lua, 2),
+                    lua_tostring(lua, 3)
+                )
+            );
+            luaL_traceback(lua, lua, NULL, 1);
+            self->errorMessageDelegate(
+                SystemAbstractions::sprintf(
+                    "%s\n",
+                    lua_tostring(lua, -1)
+                )
+            );
+            lua_pop(lua, 1);
+        }
+        return 0;
+    }
+
+    /**
+     * Compare the two values at the top of the Lua stack and mark the current
+     * test as failed if the first is not greater than the second.
+     *
+     * This is registered as the "expect_gt" method of the "moonunit" singleton
+     * provided to Lua scripts.
+     *
+     * @param[in] lua
+     *     This points to the state of the Lua interpreter.
+     */
+    static int LuaExpectGt(lua_State* lua) {
+        auto self = *(Impl**)luaL_checkudata(lua, 1, "moonunit");
+        if (lua_compare(lua, 2, 3, LUA_OPLE)) {
+            self->currentTestFailed = true;
+            self->errorMessageDelegate(
+                SystemAbstractions::sprintf(
+                    "expected '%s' > '%s'\n",
+                    lua_tostring(lua, 2),
+                    lua_tostring(lua, 3)
+                )
+            );
+            luaL_traceback(lua, lua, NULL, 1);
+            self->errorMessageDelegate(
+                SystemAbstractions::sprintf(
+                    "%s\n",
+                    lua_tostring(lua, -1)
+                )
+            );
+            lua_pop(lua, 1);
+        }
+        return 0;
+    }
+
+    /**
+     * Compare the two values at the top of the Lua stack and mark the current
+     * test as failed if the first is not less than or equal to the second.
+     *
+     * This is registered as the "expect_le" method of the "moonunit" singleton
+     * provided to Lua scripts.
+     *
+     * @param[in] lua
+     *     This points to the state of the Lua interpreter.
+     */
+    static int LuaExpectLe(lua_State* lua) {
+        auto self = *(Impl**)luaL_checkudata(lua, 1, "moonunit");
+        if (!lua_compare(lua, 2, 3, LUA_OPLE)) {
+            self->currentTestFailed = true;
+            self->errorMessageDelegate(
+                SystemAbstractions::sprintf(
+                    "expected '%s' <= '%s'\n",
+                    lua_tostring(lua, 2),
+                    lua_tostring(lua, 3)
+                )
+            );
+            luaL_traceback(lua, lua, NULL, 1);
+            self->errorMessageDelegate(
+                SystemAbstractions::sprintf(
+                    "%s\n",
+                    lua_tostring(lua, -1)
+                )
+            );
+            lua_pop(lua, 1);
+        }
+        return 0;
+    }
+
+    /**
+     * Compare the two values at the top of the Lua stack and mark the current
+     * test as failed if the first is not less than the second.
+     *
+     * This is registered as the "expect_lt" method of the "moonunit" singleton
+     * provided to Lua scripts.
+     *
+     * @param[in] lua
+     *     This points to the state of the Lua interpreter.
+     */
+    static int LuaExpectLt(lua_State* lua) {
+        auto self = *(Impl**)luaL_checkudata(lua, 1, "moonunit");
+        if (!lua_compare(lua, 2, 3, LUA_OPLT)) {
+            self->currentTestFailed = true;
+            self->errorMessageDelegate(
+                SystemAbstractions::sprintf(
+                    "expected '%s' < '%s'\n",
+                    lua_tostring(lua, 2),
+                    lua_tostring(lua, 3)
+                )
+            );
+            luaL_traceback(lua, lua, NULL, 1);
+            self->errorMessageDelegate(
+                SystemAbstractions::sprintf(
+                    "%s\n",
+                    lua_tostring(lua, -1)
+                )
+            );
+            lua_pop(lua, 1);
+        }
+        return 0;
+    }
+
+    /**
+     * Compare the two values at the top of the Lua stack and mark the current
+     * test as failed if they are equal.
+     *
+     * This is registered as the "expect_ne" method of the "moonunit" singleton
+     * provided to Lua scripts.
+     *
+     * @param[in] lua
+     *     This points to the state of the Lua interpreter.
+     */
+    static int LuaExpectNe(lua_State* lua) {
+        auto self = *(Impl**)luaL_checkudata(lua, 1, "moonunit");
+        if (lua_compare(lua, 2, 3, LUA_OPEQ)) {
+            self->currentTestFailed = true;
+            self->errorMessageDelegate(
+                SystemAbstractions::sprintf(
+                    "Expected not '%s', actual was '%s'\n",
+                    lua_tostring(lua, 2),
+                    lua_tostring(lua, 3)
+                )
+            );
+            luaL_traceback(lua, lua, NULL, 1);
+            self->errorMessageDelegate(
+                SystemAbstractions::sprintf(
+                    "%s\n",
+                    lua_tostring(lua, -1)
+                )
+            );
+            lua_pop(lua, 1);
+        }
+        return 0;
+    }
+
+    /**
+     * Compare the value at the top of the Lua stack and mark the current test
+     * as failed if it is not considered "truthy".
+     *
+     * This is registered as the "expect_true" method of the "moonunit"
+     * singleton provided to Lua scripts.
+     *
+     * @param[in] lua
+     *     This points to the state of the Lua interpreter.
+     */
+    static int LuaExpectTrue(lua_State* lua) {
+        auto self = *(Impl**)luaL_checkudata(lua, 1, "moonunit");
+        if (!lua_toboolean(lua, 2)) {
+            self->currentTestFailed = true;
+            const std::string actual = luaL_tolstring(lua, 2, NULL);
+            lua_pop(lua, 1);
+            self->errorMessageDelegate(
+                SystemAbstractions::sprintf(
+                    "Expected '%s' to be true\n",
+                    actual.c_str()
                 )
             );
             luaL_traceback(lua, lua, NULL, 1);
@@ -535,8 +931,50 @@ struct Runner::Impl {
         lua_pushstring(lua, "assert_eq");
         lua_pushcfunction(lua, Impl::LuaAssertEq);
         lua_settable(lua, -3);
+        lua_pushstring(lua, "assert_false");
+        lua_pushcfunction(lua, Impl::LuaAssertFalse);
+        lua_settable(lua, -3);
+        lua_pushstring(lua, "assert_ge");
+        lua_pushcfunction(lua, Impl::LuaAssertGe);
+        lua_settable(lua, -3);
+        lua_pushstring(lua, "assert_gt");
+        lua_pushcfunction(lua, Impl::LuaAssertGt);
+        lua_settable(lua, -3);
+        lua_pushstring(lua, "assert_le");
+        lua_pushcfunction(lua, Impl::LuaAssertLe);
+        lua_settable(lua, -3);
+        lua_pushstring(lua, "assert_lt");
+        lua_pushcfunction(lua, Impl::LuaAssertLt);
+        lua_settable(lua, -3);
+        lua_pushstring(lua, "assert_ne");
+        lua_pushcfunction(lua, Impl::LuaAssertNe);
+        lua_settable(lua, -3);
+        lua_pushstring(lua, "assert_true");
+        lua_pushcfunction(lua, Impl::LuaAssertTrue);
+        lua_settable(lua, -3);
         lua_pushstring(lua, "expect_eq");
         lua_pushcfunction(lua, Impl::LuaExpectEq);
+        lua_settable(lua, -3);
+        lua_pushstring(lua, "expect_false");
+        lua_pushcfunction(lua, Impl::LuaExpectFalse);
+        lua_settable(lua, -3);
+        lua_pushstring(lua, "expect_ge");
+        lua_pushcfunction(lua, Impl::LuaExpectGe);
+        lua_settable(lua, -3);
+        lua_pushstring(lua, "expect_gt");
+        lua_pushcfunction(lua, Impl::LuaExpectGt);
+        lua_settable(lua, -3);
+        lua_pushstring(lua, "expect_le");
+        lua_pushcfunction(lua, Impl::LuaExpectLe);
+        lua_settable(lua, -3);
+        lua_pushstring(lua, "expect_lt");
+        lua_pushcfunction(lua, Impl::LuaExpectLt);
+        lua_settable(lua, -3);
+        lua_pushstring(lua, "expect_ne");
+        lua_pushcfunction(lua, Impl::LuaExpectNe);
+        lua_settable(lua, -3);
+        lua_pushstring(lua, "expect_true");
+        lua_pushcfunction(lua, Impl::LuaExpectTrue);
         lua_settable(lua, -3);
         lua_pushstring(lua, "test");
         lua_pushcfunction(lua, Impl::LuaTest);
