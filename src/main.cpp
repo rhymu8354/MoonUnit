@@ -100,17 +100,49 @@ namespace {
      * about how to use this program.
      */
     void PrintUsageInformation() {
-        fprintf(
-            stderr,
-            (
-                "Usage: MoonUnit [--path PATH]\n"
-                "\n"
-                "Do stuff with Lua and unit testing, maybe?\n"
-                "\n"
-                "Options:\n"
-                "    PATH  The relative or absolute path to the folder containing the\n"
-                "          Lua test scripts to run.\n"
-            )
+        printf(
+            "Usage: MoonUnit [--path=PATH]\n"
+            "                [--gtest_list_tests]\n"
+            "                [--gtest_filter=FILTER]\n"
+            "                [--gtest_output=xml:REPORT]\n"
+            "\n"
+            "Options:\n"
+            "\n"
+            "    PATH    The relative or absolute path to a folder which contains\n"
+            "            (or has a direct ancestor folder which contains) a '.moonunit' file\n"
+            "            specifying paths to directories containing Lua test files to run\n"
+            "            (or other '.moonunit' files) or individual Lua test files to run.\n"
+            "            If not specified, the current working directory is used instead.\n"
+            "\n"
+            "    FILTER  One or more test names separated by colons, which selects\n"
+            "            just the named tests to be run.\n"
+            "            If not specified, all discovered tests will be run.\n"
+            "\n"
+            "    REPORT  The relative or absolute path to an XML file to be generated\n"
+            "            containing a report about the tests discovered by the test runner,\n"
+            "            in a format compatible with Google Test.\n"
+            "            Unless this is specified, no report will be generated.\n"
+            "\n"
+            "This program contains tests written using Google Test.\n"
+            "\n"
+            "Well, not really, but we had to say that in order for\n"
+            "the 'Catch2 and Google Test Explorer' plugin for VSCode to *think* so, in order\n"
+            "for it to support this test runner.\n"
+            "\n"
+            "What this program *actually* contains is a Lua interpreter and code which\n"
+            "discovers and executes unit tests written in Lua.  Place a '.moonunit' file\n"
+            "in the root folder of your project, and in that file list paths from there\n"
+            "to individual Lua test files to run, or paths to directories containing\n"
+            "other '.moonunit' files and/or Lua test files, and MoonUnit will discover\n"
+            "all your tests and run them for you, provided you either set the working\n"
+            "directory somewhere inside your project, or specify the project's folder using\n"
+            "the --path command-line argument.  Neat, huh?\n"
+            "\n"
+            "What's really cool is MoonUnit makes its output look like Google Test,\n"
+            "and supports the minimum command-line arguments required by\n"
+            "the 'Catch2 and Google Test Explorer' plugin for VSCode,\n"
+            "so that it should seamlessly integrate into a VSCode 'solution' along with\n"
+            "other test runners.\n"
         );
     }
 
@@ -130,6 +162,8 @@ namespace {
         std::string filter;
 
         bool listTests = false;
+
+        bool helpRequested = false;
     };
 
     /**
@@ -156,112 +190,25 @@ namespace {
         char* argv[],
         Environment& environment
     ) {
-        FILE* log = fopen(
-            (
-                SystemAbstractions::File::GetExeParentDirectory()
-                + "/log.txt"
-            ).c_str(),
-            "at"
-        );
-        fprintf(log, "MoonUnit executed; arguments:\n");
-        enum class State {
-            NoContext,
-            SearchPath,
-        } state = State::NoContext;
         for (int i = 1; i < argc; ++i) {
             const std::string arg(argv[i]);
-            fprintf(log, "  %s\n", arg.c_str());
+            static const std::string pathOptionPrefix = "--path=";
+            static const size_t pathOptionPrefixLength = pathOptionPrefix.length();
             static const std::string gtestFilterOptionPrefix = "--gtest_filter=";
             static const size_t gtestFilterOptionPrefixLength = gtestFilterOptionPrefix.length();
-            switch (state) {
-                case State::NoContext: {
-                    static const std::string reportArgumentPrefix = "--gtest_output=xml:";
-                    static const auto reportArgumentPrefixLength = reportArgumentPrefix.length();
-                    if (arg == "--path") {
-                        state = State::SearchPath;
-                    } else if (arg == "--help") {
-                        printf(
-                            "This program contains tests written using Google Test. You can use the\n"
-                            "following command line flags to control its behavior:\n"
-                            "\n"
-                            "Test Selection:\n"
-                            "  --gtest_list_tests\n"
-                            "      List the names of all tests instead of running them. The name of\n"
-                            "      TEST(Foo, Bar) is \"Foo.Bar\".\n"
-                            "  --gtest_filter=POSTIVE_PATTERNS[-NEGATIVE_PATTERNS]\n"
-                            "      Run only the tests whose name matches one of the positive patterns but\n"
-                            "      none of the negative patterns. '?' matches any single character; '*'\n"
-                            "      matches any substring; ':' separates two patterns.\n"
-                            "  --gtest_also_run_disabled_tests\n"
-                            "      Run all disabled tests too.\n"
-                            "\n"
-                            "Test Execution:\n"
-                            "  --gtest_repeat=[COUNT]\n"
-                            "      Run the tests repeatedly; use a negative count to repeat forever.\n"
-                            "  --gtest_shuffle\n"
-                            "      Randomize tests' orders on every iteration.\n"
-                            "  --gtest_random_seed=[NUMBER]\n"
-                            "      Random number seed to use for shuffling test orders (between 1 and\n"
-                            "      99999, or 0 to use a seed based on the current time).\n"
-                            "\n"
-                            "Test Output:\n"
-                            "  --gtest_color=(yes|no|auto)\n"
-                            "      Enable/disable colored output. The default is auto.\n"
-                            "  --gtest_print_time=0\n"
-                            "      Don't print the elapsed time of each test.\n"
-                            "  --gtest_output=(json|xml)[:DIRECTORY_PATH\\|:FILE_PATH]\n"
-                            "      Generate a JSON or XML report in the given directory or with the given\n"
-                            "      file name. FILE_PATH defaults to test_detail.xml.\n"
-                            "\n"
-                            "Assertion Behavior:\n"
-                            "  --gtest_break_on_failure\n"
-                            "      Turn assertion failures into debugger break-points.\n"
-                            "  --gtest_throw_on_failure\n"
-                            "      Turn assertion failures into C++ exceptions for use by an external\n"
-                            "      test framework.\n"
-                            "  --gtest_catch_exceptions=0\n"
-                            "      Do not report exceptions as test failures. Instead, allow them\n"
-                            "      to crash the program or throw a pop-up (on Windows).\n"
-                            "\n"
-                            "Except for --gtest_list_tests, you can alternatively set the corresponding\n"
-                            "environment variable of a flag (all letters in upper-case). For example, to\n"
-                            "disable colored text output, you can either specify --gtest_color=no or set\n"
-                            "the GTEST_COLOR environment variable to no.\n"
-                            "\n"
-                            "For more information, please read the Google Test documentation at\n"
-                            "https://github.com/google/googletest/. If you find a bug in Google Test\n"
-                            "(not one in your own code or tests), please report it to\n"
-                            "<googletestframework@googlegroups.com>.\n"
-                        );
-                        exit(0);
-                    } else if (arg == "--gtest_list_tests") {
-                        environment.listTests = true;
-                    } else if (arg.substr(0, gtestFilterOptionPrefixLength) == gtestFilterOptionPrefix) {
-                        environment.filter = arg.substr(gtestFilterOptionPrefixLength);
-                    } else if (arg.substr(0, reportArgumentPrefixLength) == reportArgumentPrefix) {
-                        environment.reportPath = arg.substr(reportArgumentPrefixLength);
-                    }
-                } break;
-
-                case State::SearchPath: {
-                    environment.searchPath = arg;
-                    state = State::NoContext;
-                } break;
-
-                default: break;
+            static const std::string reportArgumentPrefix = "--gtest_output=xml:";
+            static const auto reportArgumentPrefixLength = reportArgumentPrefix.length();
+            if (arg.substr(0, pathOptionPrefixLength) == pathOptionPrefix) {
+                environment.searchPath = arg.substr(pathOptionPrefixLength);
+            } else if (arg == "--help") {
+                environment.helpRequested = true;
+            } else if (arg == "--gtest_list_tests") {
+                environment.listTests = true;
+            } else if (arg.substr(0, gtestFilterOptionPrefixLength) == gtestFilterOptionPrefix) {
+                environment.filter = arg.substr(gtestFilterOptionPrefixLength);
+            } else if (arg.substr(0, reportArgumentPrefixLength) == reportArgumentPrefix) {
+                environment.reportPath = arg.substr(reportArgumentPrefixLength);
             }
-        }
-        (void)fclose(log);
-        switch (state) {
-            case State::SearchPath: {
-                fprintf(
-                    stderr,
-                    "path expected for --path option\n"
-                );
-                return false;
-            }
-
-            default: break;
         }
         return true;
     }
@@ -284,15 +231,17 @@ int main(int argc, char* argv[]) {
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 #endif /* _WIN32 */
 
-    // Simulate Google Test output.
-    // (void)setbuf(stdout, NULL);
-    printf("Running main() from ..\\googletest\\googletest\\src\\gtest_main.cc\n");
-
     // Process command line and environment variables.
     Environment environment;
     if (!ProcessCommandLineArguments(argc, argv, environment)) {
         PrintUsageInformation();
         return EXIT_FAILURE;
+    }
+
+    // If help is requested, print usage information and exit early.
+    if (environment.helpRequested) {
+        PrintUsageInformation();
+        return EXIT_SUCCESS;
     }
 
     // Locate the highest-level ancestor folder of the current working

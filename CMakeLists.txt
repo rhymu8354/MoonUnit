@@ -3,7 +3,7 @@
 # © 2019 by Richard Walters
 
 cmake_minimum_required(VERSION 3.8)
-set(This MoonUnitTests)
+set(This MoonUnit)
 
 set(Headers
     src/Runner.hpp
