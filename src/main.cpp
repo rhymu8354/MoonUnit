@@ -295,14 +295,16 @@ int main(int argc, char* argv[]) {
             }
         }
     }
-    printf(
-        "[==========] Running %zu test%s from %zu test suite%s.\n"
-        "[----------] Global test environment set-up.\n",
-        totalTests,
-        ((totalTests == 1) ? "" : "s"),
-        totalTestSuites,
-        ((totalTestSuites == 1) ? "" : "s")
-    );
+    if (!environment.listTests) {
+        printf(
+            "[==========] Running %zu test%s from %zu test suite%s.\n"
+            "[----------] Global test environment set-up.\n",
+            totalTests,
+            ((totalTests == 1) ? "" : "s"),
+            totalTestSuites,
+            ((totalTestSuites == 1) ? "" : "s")
+        );
+    }
     size_t passed = 0;
     std::vector< std::string > failed;
     SystemAbstractions::Time timer;
@@ -401,18 +403,20 @@ int main(int argc, char* argv[]) {
         }
     }
     const auto runnerEndTime = timer.GetTime();
-    printf(
-        "[----------] Global test environment tear-down\n"
-        "[==========] %zu test%s from %zu test suite%s ran. (%d ms total)\n"
-        "[  PASSED  ] %zu test%s.\n",
-        totalTests,
-        ((totalTests == 1) ? "" : "s"),
-        totalTestSuites,
-        ((totalTestSuites == 1) ? "" : "s"),
-        (int)ceil((runnerEndTime - runnerStartTime) * 1000.0),
-        passed,
-        ((passed == 1) ? "" : "s")
-    );
+    if (!environment.listTests) {
+        printf(
+            "[----------] Global test environment tear-down\n"
+            "[==========] %zu test%s from %zu test suite%s ran. (%d ms total)\n"
+            "[  PASSED  ] %zu test%s.\n",
+            totalTests,
+            ((totalTests == 1) ? "" : "s"),
+            totalTestSuites,
+            ((totalTestSuites == 1) ? "" : "s"),
+            (int)ceil((runnerEndTime - runnerStartTime) * 1000.0),
+            passed,
+            ((passed == 1) ? "" : "s")
+        );
+    }
     if (!failed.empty()) {
         printf(
             "[  FAILED  ] %zu test%s, listed below:\n",

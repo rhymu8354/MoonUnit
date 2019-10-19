@@ -13,34 +13,30 @@ function buggy_abs(x)
     end
 end
 
--- moonunit:test("test_square_zero", function()
---     local x = 0
---     local y = square(x)
---     moonunit:expect_eq(0, y)
--- end)
+if not moonunit then return end
 
-function test_square_zero()
+moonunit:test("examples_passing", "square_zero", function()
     local x = 0
     local y = square(x)
     moonunit:expect_eq(0, y)
-end
+end)
 
-function test_square_non_zero()
+moonunit:test("examples_passing", "square_non_zero", function()
     local x = 5
     local y = square(x)
     moonunit:expect_eq(25, y)
-end
+end)
 
-function test_buggy_abs_should_pass()
+moonunit:test("examples_failing", "buggy_abs_should_pass", function()
     moonunit:expect_eq(5, buggy_abs(-5))
-end
+end)
 
-function test_buggy_abs_should_fail_and_stop()
+moonunit:test("examples_failing", "buggy_abs_should_fail_and_stop", function()
     moonunit:assert_eq(1, buggy_abs(-1))
     moonunit:expect_eq(1, buggy_abs(-1))
-end
+end)
 
-function test_buggy_abs_should_fail_but_continue()
+moonunit:test("examples_failing", "buggy_abs_should_fail_but_continue", function()
     moonunit:expect_eq(1, buggy_abs(-1))
     moonunit:expect_eq(1, buggy_abs(-1))
-end
+end)

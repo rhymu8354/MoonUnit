@@ -26,12 +26,12 @@ namespace {
     static const auto luaFileExtensionLength = luaFileExtension.length();
 
     struct Test {
+        std::string file;
+        std::string filePath;
         int lineNumber = 0;
     };
 
     struct TestSuite {
-        std::string file;
-        std::string filePath;
         std::unordered_map< std::string, Test > tests;
     };
 
@@ -182,6 +182,12 @@ struct Runner::Impl {
      */
     ErrorMessageDelegate errorMessageDelegate;
 
+    /**
+     * This is the Lua registry index of the table set up to hold Lua
+     * objects associated with this instance.
+     */
+    int luaRegistryIndex = 0;
+
     // Methods
 
     ~Impl() = default;
@@ -192,39 +198,42 @@ struct Runner::Impl {
 
     Impl() = default;
 
-    void FindTests(TestSuite& testSuite) {
-        lua_getglobal(lua, "_G");
+    void FindTests(
+        const std::string& file,
+        const std::string& filePath
+    ) {
+        lua_rawgeti(lua, LUA_REGISTRYINDEX, luaRegistryIndex);
         lua_pushnil(lua);
         while (lua_next(lua, -2) != 0) {
-            static const std::string testPrefix = "test_";
-            static const size_t testPrefixLength = testPrefix.length();
-            const std::string key = luaL_checkstring(lua, -2);
-            if (
-                (key.length() >= testPrefixLength)
-                && (key.substr(0, testPrefixLength) == testPrefix)
-            ) {
+            const std::string testSuiteName = luaL_checkstring(lua, -2);
+            auto& testSuite = testSuites[testSuiteName];
+            lua_pushnil(lua);
+            while (lua_next(lua, -2) != 0) {
+                const std::string testName = luaL_checkstring(lua, -2);
                 lua_Debug debug;
                 lua_getinfo(lua, ">S", &debug);
                 Test test;
+                test.file = file;
+                test.filePath = filePath;
                 test.lineNumber = debug.linedefined;
-                testSuite.tests[key] = std::move(test);
-            } else {
-                lua_pop(lua, 1);
+                testSuite.tests[testName] = std::move(test);
             }
+            lua_pop(lua, 1);
         }
         lua_pop(lua, 1);
     }
 
-    std::string WithTestSuite(
-        TestSuite& testSuite,
+    std::string WithScript(
+        const std::string& file,
+        const std::string& filePath,
         std::function< void() > fn
     ) {
         lua_settop(lua, 0);
         lua_pushcfunction(lua, LuaTraceback);
         LuaReaderState luaReaderState;
-        luaReaderState.chunk = &testSuite.file;
+        luaReaderState.chunk = &file;
         std::string errorMessage;
-        switch (const int luaLoadResult = lua_load(lua, LuaReader, &luaReaderState, ("=" + testSuite.filePath).c_str(), "t")) {
+        switch (const int luaLoadResult = lua_load(lua, LuaReader, &luaReaderState, ("=" + filePath).c_str(), "t")) {
             case LUA_OK: {
                 const int luaPCallResult = lua_pcall(lua, 0, 0, 1);
                 if (luaPCallResult == LUA_OK) {
@@ -277,32 +286,31 @@ struct Runner::Impl {
             );
             return;
         }
-        TestSuite testSuite;
-        testSuite.filePath = file.GetPath();
-        testSuite.file.assign(
+        const std::string script(
             buffer.begin(),
             buffer.end()
         );
         WithLua([&]{
-            auto errorMessage = WithTestSuite(
-                testSuite,
-                std::bind(&Impl::FindTests, this, std::ref(testSuite))
+            auto errorMessage = WithScript(
+                script,
+                file.GetPath(),
+                std::bind(&Impl::FindTests, this, script, file.GetPath())
             );
             if (!errorMessage.empty()) {
                 errorMessageDelegate(
                     SystemAbstractions::sprintf(
                         "ERROR: Unable to load Lua script file '%s': %s",
-                        testSuite.filePath.c_str(),
+                        file.GetPath().c_str(),
                         errorMessage.c_str()
                     )
                 );
                 return;
             }
-            const auto delimiterIndex = testSuite.filePath.find_last_of('/');
+            const auto delimiterIndex = file.GetPath().find_last_of('/');
             auto name = (
                 (delimiterIndex == std::string::npos)
-                ? testSuite.filePath
-                : testSuite.filePath.substr(delimiterIndex + 1)
+                ? file.GetPath()
+                : file.GetPath().substr(delimiterIndex + 1)
             );
             if (name.length() >= luaFileExtensionLength) {
                 const auto nameLengthWithoutExtension = name.length() - luaFileExtensionLength;
@@ -310,7 +318,6 @@ struct Runner::Impl {
                     name = name.substr(0, nameLengthWithoutExtension);
                 }
             }
-            testSuites[name] = std::move(testSuite);
         });
     }
 
@@ -350,6 +357,28 @@ struct Runner::Impl {
         return 0;
     }
 
+    static int LuaTest(lua_State* lua) {
+        auto self = *(Impl**)luaL_checkudata(lua, 1, "moonunit");
+        const std::string testSuiteName = luaL_checkstring(lua, 2);
+        const std::string testName = luaL_checkstring(lua, 3);
+        luaL_checktype(lua, 4, LUA_TFUNCTION);
+        lua_rawgeti(lua, LUA_REGISTRYINDEX, self->luaRegistryIndex);
+        lua_pushvalue(lua, 2);
+        lua_rawget(lua, -2);
+        if (lua_isnil(lua, -1)) {
+            lua_pop(lua, 1);
+            lua_newtable(lua);
+            lua_pushvalue(lua, 2);
+            lua_pushvalue(lua, -2);
+            lua_rawset(lua, -4);
+        }
+        lua_pushvalue(lua, 3);
+        lua_pushvalue(lua, 4);
+        lua_rawset(lua, -3);
+        lua_pop(lua, 2);
+        return 0;
+    }
+
     void WithLua(std::function< void() > fn) {
         // Create the Lua interpreter.
         lua = lua_newstate(LuaAllocator, NULL);
@@ -368,11 +397,14 @@ struct Runner::Impl {
         lua_pushstring(lua, "__index");
         lua_pushvalue(lua, -2);
         lua_settable(lua, -3);
+        lua_pushstring(lua, "assert_eq");
+        lua_pushcfunction(lua, Impl::LuaAssertEq);
+        lua_settable(lua, -3);
         lua_pushstring(lua, "expect_eq");
         lua_pushcfunction(lua, Impl::LuaExpectEq);
         lua_settable(lua, -3);
-        lua_pushstring(lua, "assert_eq");
-        lua_pushcfunction(lua, Impl::LuaAssertEq);
+        lua_pushstring(lua, "test");
+        lua_pushcfunction(lua, Impl::LuaTest);
         lua_settable(lua, -3);
         lua_pop(lua, 1);
 
@@ -382,8 +414,16 @@ struct Runner::Impl {
         luaL_setmetatable(lua, "moonunit");
         lua_setglobal(lua, "moonunit");
 
+        // Make a table for organizing test and test suites.
+        lua_newtable(lua);
+        luaRegistryIndex = luaL_ref(lua, LUA_REGISTRYINDEX);
+
         // Perform the requested operation.
         fn();
+
+        // Release table used for organizing test and test suites.
+        luaL_unref(lua, LUA_REGISTRYINDEX, luaRegistryIndex);
+        luaRegistryIndex = 0;
 
         // Destroy the Lua interpreter.
         lua_close(lua);
@@ -472,7 +512,7 @@ std::string Runner::GetReport() const {
         for (const auto& test: testSuite.second.tests) {
             buffer
                 << "    <testcase name=\"" << test.first << "\""
-                << " file=\"" << testSuite.second.filePath << "\""
+                << " file=\"" << test.second.filePath << "\""
                 << " line=\"" << test.second.lineNumber << "\" />" << std::endl;
         }
         buffer << "  </testsuite>" << std::endl;
@@ -507,7 +547,7 @@ bool Runner::RunTest(
     const std::string& testName,
     ErrorMessageDelegate errorMessageDelegate
 ) {
-    auto testSuitesEntry = impl_->testSuites.find(testSuiteName);
+    const auto testSuitesEntry = impl_->testSuites.find(testSuiteName);
     if (testSuitesEntry == impl_->testSuites.end()) {
         errorMessageDelegate(
             SystemAbstractions::sprintf(
@@ -517,15 +557,34 @@ bool Runner::RunTest(
         );
         return false;
     }
+    const auto& testSuite = testSuitesEntry->second;
+    const auto testsEntry = testSuite.tests.find(testName);
+    if (testsEntry == testSuite.tests.end()) {
+        errorMessageDelegate(
+            SystemAbstractions::sprintf(
+                "ERROR: No test '%s' found in test suite '%s'",
+                testName.c_str(),
+                testSuiteName.c_str()
+            )
+        );
+        return false;
+    }
+    const auto& test = testsEntry->second;
     impl_->currentTestFailed = false;
     impl_->WithLua([&]{
-        auto& testSuite = testSuitesEntry->second;
-        auto errorMessage = impl_->WithTestSuite(
-            testSuite,
+        auto errorMessage = impl_->WithScript(
+            test.file,
+            test.filePath,
             [&]{
                 impl_->errorMessageDelegate = errorMessageDelegate;
                 lua_pushcfunction(impl_->lua, LuaTraceback);
-                lua_getglobal(impl_->lua, testName.c_str());
+                lua_rawgeti(impl_->lua, LUA_REGISTRYINDEX, impl_->luaRegistryIndex);
+                lua_pushstring(impl_->lua, testSuiteName.c_str());
+                lua_rawget(impl_->lua, -2);
+                lua_remove(impl_->lua, -2);
+                lua_pushstring(impl_->lua, testName.c_str());
+                lua_rawget(impl_->lua, -2);
+                lua_remove(impl_->lua, -2);
                 const int luaPCallResult = lua_pcall(impl_->lua, 0, 0, 1);
                 std::string errorMessage;
                 if (luaPCallResult != LUA_OK) {
@@ -548,7 +607,7 @@ bool Runner::RunTest(
             errorMessageDelegate(
                 SystemAbstractions::sprintf(
                     "ERROR: Unable to load Lua script file '%s': %s",
-                    testSuite.filePath.c_str(),
+                    test.filePath.c_str(),
                     errorMessage.c_str()
                 )
             );
