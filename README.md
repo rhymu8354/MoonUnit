@@ -70,7 +70,7 @@ or project setting as an array, and add the following to it:
 }
 ```
 
-Using the `Test Explorer UI` VSCode extension, with MoonUnit properly
+Using the `Test Explorer UI` VSCode extension, with `MoonUnit` properly
 integrated, you should see your Lua test suites and tests listed in the panel:
 
 ![ScreenShot - Test Explorer UI](./doc/screenshot-test-explorer-ui.png)
