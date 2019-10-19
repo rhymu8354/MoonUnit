@@ -14,6 +14,7 @@
 #include <string>
 #include <SystemAbstractions/File.hpp>
 #include <SystemAbstractions/StringExtensions.hpp>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -124,6 +125,10 @@ namespace {
         std::string searchPath = ".";
 
         std::string reportPath;
+
+        std::string filter;
+
+        bool listTests = false;
     };
 
     /**
@@ -165,6 +170,8 @@ namespace {
         for (int i = 1; i < argc; ++i) {
             const std::string arg(argv[i]);
             fprintf(log, "  %s\n", arg.c_str());
+            static const std::string gtestFilterOptionPrefix = "--gtest_filter=";
+            static const size_t gtestFilterOptionPrefixLength = gtestFilterOptionPrefix.length();
             switch (state) {
                 case State::NoContext: {
                     static const std::string reportArgumentPrefix = "--gtest_output=xml:";
@@ -173,7 +180,6 @@ namespace {
                         state = State::SearchPath;
                     } else if (arg == "--help") {
                         printf(
-                            "Running main() from ..\\googletest\\googletest\\src\\gtest_main.cc\n"
                             "This program contains tests written using Google Test. You can use the\n"
                             "following command line flags to control its behavior:\n"
                             "\n"
@@ -227,6 +233,10 @@ namespace {
                             "<googletestframework@googlegroups.com>.\n"
                         );
                         exit(0);
+                    } else if (arg == "--gtest_list_tests") {
+                        environment.listTests = true;
+                    } else if (arg.substr(0, gtestFilterOptionPrefixLength) == gtestFilterOptionPrefix) {
+                        environment.filter = arg.substr(gtestFilterOptionPrefixLength);
                     } else if (arg.substr(0, reportArgumentPrefixLength) == reportArgumentPrefix) {
                         environment.reportPath = arg.substr(reportArgumentPrefixLength);
                     }
@@ -273,9 +283,12 @@ int main(int argc, char* argv[]) {
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 #endif /* _WIN32 */
 
+    // Simulate Google Test output.
+    // (void)setbuf(stdout, NULL);
+    printf("Running main() from ..\\googletest\\googletest\\src\\gtest_main.cc\n");
+
     // Process command line and environment variables.
     Environment environment;
-    (void)setbuf(stdout, NULL);
     if (!ProcessCommandLineArguments(argc, argv, environment)) {
         PrintUsageInformation();
         return EXIT_FAILURE;
@@ -308,41 +321,155 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // Run all unit tests.
+    // List or run all unit tests.
     bool success = true;
-    for (const auto& testSuiteName: runner.GetTestSuiteNames()) {
-        for (const auto& testName: runner.GetTestNames(testSuiteName)) {
-            printf(
-                "%s.%s...",
-                testSuiteName.c_str(),
-                testName.c_str()
-            );
-            std::vector< std::string > errorMessages;
-            if (
-                runner.RunTest(
-                    testSuiteName,
-                    testName,
-                    [&](const std::string& message){
-                        errorMessages.push_back(message);
-                    }
-                )
-            ) {
-                printf("** PASS **\n");
-            } else {
-                printf("** FAIL **\n");
-                success = false;
-            }
-            if (!errorMessages.empty()) {
-                fprintf(stderr, "------------------------\n");
-                for (const auto& line: errorMessages) {
-                    (void)fwrite(
-                        line.data(),
-                        line.length(), 1,
-                        stderr
-                    );
+    std::unordered_map< std::string, std::unordered_set< std::string > > selectedTests;
+    size_t totalTests = 0;
+    if (!environment.filter.empty()) {
+        for (const auto& filter: SystemAbstractions::Split(environment.filter, ':')) {
+            const auto delimiterIndex = filter.find('.');
+            if (delimiterIndex != std::string::npos) {
+                const auto testSuiteName = filter.substr(0, delimiterIndex);
+                const auto testName = filter.substr(delimiterIndex + 1);
+                if (selectedTests[testSuiteName].insert(testName).second) {
+                    ++totalTests;
                 }
-                fprintf(stderr, "------------------------\n");
             }
+        }
+        printf(
+            "Note: Google Test filter = %s\n"
+            "[==========] Running %zu test%s from %zu test suite%s.\n"
+            "[----------] Global test environment set-up.\n",
+            environment.filter.c_str(),
+            totalTests,
+            ((totalTests == 1) ? "" : "s"),
+            selectedTests.size(),
+            ((selectedTests.size() == 1) ? "" : "s")
+        );
+    }
+    size_t passed = 0;
+    std::vector< std::string > failed;
+    for (const auto& testSuiteName: runner.GetTestSuiteNames()) {
+        const auto selectedTestsEntry = selectedTests.find(testSuiteName);
+        if (
+            !selectedTests.empty()
+            && (selectedTestsEntry == selectedTests.end())
+        ) {
+            continue;
+        }
+        if (environment.listTests) {
+            printf("%s.\n", testSuiteName.c_str());
+        } else if (selectedTestsEntry != selectedTests.end()) {
+            printf(
+                "[----------] %zu test%s from %s\n",
+                selectedTestsEntry->second.size(),
+                ((selectedTestsEntry->second.size() == 1) ? "" : "s"),
+                testSuiteName.c_str()
+            );
+        }
+        for (const auto& testName: runner.GetTestNames(testSuiteName)) {
+            if (selectedTestsEntry != selectedTests.end()) {
+                const auto selectedTestEntry = selectedTestsEntry->second.find(testName);
+                if (selectedTestEntry == selectedTestsEntry->second.end()) {
+                    continue;
+                }
+            }
+            if (environment.listTests) {
+                printf("  %s\n", testName.c_str());
+            } else {
+                printf(
+                    "[ RUN      ] %s.%s\n",
+                    testSuiteName.c_str(),
+                    testName.c_str()
+                );
+                std::vector< std::string > errorMessages;
+                if (
+                    runner.RunTest(
+                        testSuiteName,
+                        testName,
+                        [&](const std::string& message){
+                            errorMessages.push_back(message);
+                        }
+                    )
+                ) {
+                    ++passed;
+                    printf(
+                        "[       OK ] %s.%s (10 ms)\n",
+                        testSuiteName.c_str(),
+                        testName.c_str()
+                    );
+                } else {
+                    failed.push_back(
+                        SystemAbstractions::sprintf(
+                            "%s.%s",
+                            testSuiteName.c_str(),
+                            testName.c_str()
+                        )
+                    );
+                    if (!errorMessages.empty()) {
+                        for (const auto& line: errorMessages) {
+                            (void)fwrite(
+                                line.data(),
+                                line.length(), 1,
+                                stdout
+                            );
+                        }
+                    }
+                    printf(
+                        "[  FAILED  ] %s.%s (10 ms)\n",
+                        testSuiteName.c_str(),
+                        testName.c_str()
+                    );
+                    success = false;
+                }
+            }
+        }
+        if (
+            !environment.listTests
+            && (selectedTestsEntry != selectedTests.end())
+        ) {
+            printf(
+                "[----------] %zu test%s from %s (10 ms total)\n\n",
+                selectedTestsEntry->second.size(),
+                ((selectedTestsEntry->second.size() == 1) ? "" : "s"),
+                testSuiteName.c_str()
+            );
+        }
+    }
+    if (!environment.filter.empty()) {
+        printf(
+            "[----------] Global test environment tear-down\n"
+            "[==========] %zu test%s from %zu test suite%s ran. (10 ms total)\n"
+            "[  PASSED  ] %zu test%s.\n",
+            totalTests,
+            ((totalTests == 1) ? "" : "s"),
+            selectedTests.size(),
+            ((selectedTests.size() == 1) ? "" : "s"),
+            passed,
+            ((passed == 1) ? "" : "s")
+        );
+        if (!failed.empty()) {
+            printf(
+                "[  FAILED  ] %zu test%s, listed below:\n",
+                failed.size(),
+                ((failed.size() == 1) ? "" : "s")
+            );
+            for (const auto& instance: failed) {
+                printf(
+                    "[  FAILED  ] %s\n",
+                    instance.c_str()
+                );
+            }
+        }
+    }
+
+    // Generate report if requested.
+    if (!environment.reportPath.empty()) {
+        FILE* reportFile = fopen(environment.reportPath.c_str(), "wt");
+        if (reportFile != NULL) {
+            const auto report = runner.GetReport();
+            (void)fwrite(report.data(), report.length(), 1, reportFile);
+            (void)fclose(reportFile);
         }
     }
 
