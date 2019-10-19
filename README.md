@@ -181,6 +181,12 @@ project's directory structure:
 
     mugit select main
     mugit pull
+    mugit select main
+
+(The second `mugit select main` is only needed to work around a known bug
+in `mugit` where pinned dependency projects are not properly pinned until
+selected a second time.  This may be fixed in the future and then it will
+no longer be required to select a second time.)
 
 Alternatively, refer to the `main.xml` file.  Although it is in XML format,
 the markup should not be too difficult to understand.  It merely lists the
