@@ -22,19 +22,53 @@ extern "C" {
 
 namespace {
 
+    /**
+     * This is the file extension expected for Lua script files.
+     */
     static const std::string luaFileExtension = ".lua";
+
+    /**
+     * This is the length of the file extension expected for Lua script files.
+     */
     static const auto luaFileExtensionLength = luaFileExtension.length();
 
+    /**
+     * This holds information needed to run or report about a Lua test.
+     */
     struct Test {
+        /**
+         * This is the Lua script to execute to prepare
+         * the Lua interpreter for running the test.
+         */
         std::string file;
+
+        /**
+         * This is the path to the file from which the Lua script was loaded.
+         */
         std::string filePath;
+
+        /**
+         * This is the line number where the test was defined in the Lua
+         * script from which the test was loaded.
+         */
         int lineNumber = 0;
     };
 
+    /**
+     * This holds information about a suite of Lua tests found by the runner.
+     */
     struct TestSuite {
+        /**
+         * This is the collection of tests recognized to be a part of the
+         * suite.
+         */
         std::unordered_map< std::string, Test > tests;
     };
 
+    /**
+     * This is used to handle the collection of test suites known by the test
+     * runner.
+     */
     using TestSuites = std::unordered_map< std::string, TestSuite >;
 
     /**
@@ -146,6 +180,18 @@ namespace {
         return 1;
     }
 
+    /**
+     * Return the path to the parent folder containing the file or directory
+     * at the given path.
+     *
+     * @param[in] path
+     *     This is the path to the file or folder whose parent folder's
+     *     path is to be returned.
+     *
+     * @return
+     *     The path to the parent folder containing the file or directory
+     *     at the given path is returned.
+     */
     std::string ParentFolderPath(const std::string& path) {
         const auto delimiterIndex = path.find_last_of('/');
         if (delimiterIndex == std::string::npos) {
@@ -169,6 +215,10 @@ struct Runner::Impl {
      */
     lua_State* lua = nullptr;
 
+    /**
+     * This is where information about the test suites located by the
+     * test runner are stored.
+     */
     TestSuites testSuites;
 
     /**
@@ -188,7 +238,7 @@ struct Runner::Impl {
      */
     int luaRegistryIndex = 0;
 
-    // Methods
+    // Lifecycle
 
     ~Impl() = default;
     Impl(const Impl&) = delete;
@@ -196,8 +246,25 @@ struct Runner::Impl {
     Impl& operator=(const Impl&) = delete;
     Impl& operator=(Impl&&) noexcept = default;
 
+    // Methods
+
+    /**
+     * This is the constructor of the class.
+     */
     Impl() = default;
 
+    /**
+     * Collect information about the test suites and tests which are registered
+     * with the test runner via the moonunit.test (LuaTest) function.
+     *
+     * @param[in] file
+     *     This is the contents of the Lua script file which was executed
+     *     in order to register the test suites and tests.
+     *
+     * @param[in] filePath
+     *     This is the path to the Lua script file which was executed
+     *     in order to register the test suites and tests.
+     */
     void FindTests(
         const std::string& file,
         const std::string& filePath
@@ -223,6 +290,23 @@ struct Runner::Impl {
         lua_pop(lua, 1);
     }
 
+    /**
+     * Call the given function after executing the given Lua script.
+     *
+     * @param[in] file
+     *     This is the contents of the Lua script file to execute.
+     *
+     * @param[in] filePath
+     *     This is the path to the Lua script file to execute.
+     *
+     * @param[in] fn
+     *     This is the function to call after executing the Lua script.
+     *
+     * @return
+     *     If any error occurs executing the Lua script, a human-readable
+     *     description of the error is returned.  Otherwise, an empty
+     *     string is returned.
+     */
     std::string WithScript(
         const std::string& file,
         const std::string& filePath,
@@ -261,6 +345,17 @@ struct Runner::Impl {
         return errorMessage;
     }
 
+    /**
+     * Execute the Lua script in the given file, and gather information
+     * about any test suites and tests registered by the script.
+     *
+     * @param[in,out] file
+     *     This is the file from which to load the Lua script.
+     *
+     * @param[in] errorMessageDelegate
+     *     This is the function to call to deliver any error messages
+     *     generated while executing the Lua script.
+     */
     void LoadTestSuite(
         SystemAbstractions::File& file,
         ErrorMessageDelegate errorMessageDelegate
@@ -321,6 +416,16 @@ struct Runner::Impl {
         });
     }
 
+    /**
+     * Compare the two values at the top of the Lua stack and throw an error if
+     * they are not equal.
+     *
+     * This is registered as the "assert_eq" method of the "moonunit" singleton
+     * provided to Lua scripts.
+     *
+     * @param[in] lua
+     *     This points to the state of the Lua interpreter.
+     */
     static int LuaAssertEq(lua_State* lua) {
         auto self = (Impl*)luaL_checkudata(lua, 1, "moonunit");
         if (!lua_compare(lua, 2, 3, LUA_OPEQ)) {
@@ -334,6 +439,16 @@ struct Runner::Impl {
         return 0;
     }
 
+    /**
+     * Compare the two values at the top of the Lua stack and mark the current
+     * task as failed if the two values are not equal.
+     *
+     * This is registered as the "expect_eq" method of the "moonunit" singleton
+     * provided to Lua scripts.
+     *
+     * @param[in] lua
+     *     This points to the state of the Lua interpreter.
+     */
     static int LuaExpectEq(lua_State* lua) {
         auto self = *(Impl**)luaL_checkudata(lua, 1, "moonunit");
         if (!lua_compare(lua, 2, 3, LUA_OPEQ)) {
@@ -357,6 +472,16 @@ struct Runner::Impl {
         return 0;
     }
 
+    /**
+     * Register the given function as the test with the given name under the
+     * test suite with the given name.
+     *
+     * This is registered as the "test" method of the "moonunit" singleton
+     * provided to Lua scripts.
+     *
+     * @param[in] lua
+     *     This points to the state of the Lua interpreter.
+     */
     static int LuaTest(lua_State* lua) {
         auto self = *(Impl**)luaL_checkudata(lua, 1, "moonunit");
         const std::string testSuiteName = luaL_checkstring(lua, 2);
@@ -379,6 +504,16 @@ struct Runner::Impl {
         return 0;
     }
 
+    /**
+     * Call the given function within the context of a fresh Lua interpreter
+     * equipped with a "moonunit" singleton used to interact with the test
+     * runner.
+     *
+     * @param[in] fn
+     *     This is the function to call within the context of a fresh Lua
+     *     interpreter equipped with a "moonunit" singleton used to interact
+     *     with the test runner.
+     */
     void WithLua(std::function< void() > fn) {
         // Create the Lua interpreter.
         lua = lua_newstate(LuaAllocator, NULL);

@@ -22,7 +22,7 @@
 namespace {
 
     /**
-     * This function replaces all backslashes with forward slashes
+     * Replace all backslashes with forward slashes
      * in the given string.
      *
      * @param[in] in
@@ -44,6 +44,19 @@ namespace {
         return out;
     }
 
+    /**
+     * Return the absolute path, with breadcrumbs ("." or "..") removed, that
+     * is equivalent to the given relative or absolute path that may contain
+     * breadcrumbs.
+     *
+     * @param[in] path
+     *     This is the path to make absolute and remove breadcrumbs.
+     *
+     * @return
+     *     The absolute path, with breadcrumbs removed, that is equivalent
+     *     to the given relative or absolute path that may contain breadcrumbs
+     *     is returned.
+     */
     std::string CanonicalPath(std::string path) {
         path = FixPathDelimiters(path);
         if (!SystemAbstractions::File::IsAbsolutePath(path)) {
@@ -152,17 +165,37 @@ namespace {
      */
     struct Environment {
         /**
-         * This is the path to the folder which will be searched for Lua
-         * scripts containing unit tests to run.
+         * This is the path to the folder used as a starting point
+         * for locating MoonUnit configuration files (".moonunit") which
+         * specify which directories and files to search for Lua tests.
          */
         std::string searchPath = ".";
 
+        /**
+         * If not empty, the program will generate an XML report
+         * to the file at this path.
+         */
         std::string reportPath;
 
+        /**
+         * If not empty, this holds a list (delimited by colons) of
+         * the names of tests to run out of all the tests found.
+         *
+         * If this is empty, the program will run all tests found.
+         */
         std::string filter;
 
+        /**
+         * This flag indicates whether or not the program will simply
+         * list all tests found rather than running tests.
+         */
         bool listTests = false;
 
+        /**
+         * This flag indicates whether or not the program will output
+         * help/usage information and then exit without searching for
+         * or running any tests.
+         */
         bool helpRequested = false;
     };
 
