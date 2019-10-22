@@ -1056,8 +1056,9 @@ void Runner::Configure(
                         (filePath.length() >= luaFileExtensionLength)
                         && (filePath.substr(filePath.length() - luaFileExtensionLength) == luaFileExtension)
                     ) {
+                        SystemAbstractions::File testSuiteFile(filePath);
                         impl_->LoadTestSuite(
-                            SystemAbstractions::File(filePath),
+                            testSuiteFile,
                             errorMessageDelegate
                         );
                     }
