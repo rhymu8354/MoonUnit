@@ -84,6 +84,7 @@ if(ParentDirectory STREQUAL "")
     endforeach()
 
     # All other libraries can be pulled in without further configuration.
+    add_subdirectory(Json)
     add_subdirectory(SystemAbstractions)
 
     # Set runtime output directory to the same as the binary directory.
@@ -105,6 +106,7 @@ set_target_properties(${This} PROPERTIES
 )
 
 target_link_libraries(${This} PUBLIC
+    Json
     LuaLibrary
     SystemAbstractions
 )

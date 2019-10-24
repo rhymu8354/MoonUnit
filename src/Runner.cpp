@@ -8,11 +8,14 @@
 
 #include "Runner.hpp"
 
+#include <Json/Value.hpp>
+#include <set>
 #include <sstream>
 #include <stdlib.h>
 #include <string>
 #include <SystemAbstractions/StringExtensions.hpp>
 #include <unordered_map>
+#include <vector>
 
 extern "C" {
 #include <lua.h>
@@ -178,6 +181,205 @@ namespace {
             luaL_traceback(lua, lua, message, 1);
         }
         return 1;
+    }
+
+    /**
+     * Push a value onto the Lua stack based on the given Json::Value.
+     *
+     * @param[in] lua
+     *     This points to the Lua interpreter instance.
+     *
+     * @param[in] value
+     *     This is the value that will be unwrapped from the given JSON value.
+     */
+    void LuaValueFromJsonValue(lua_State* lua, const Json::Value& value) {
+        switch (value.GetType()) {
+            case Json::Value::Type::Array:
+            case Json::Value::Type::Object: {
+                auto returnValue = (Json::Value*)lua_newuserdata(lua, sizeof(Json::Value));
+                new (returnValue) Json::Value(value);
+                luaL_setmetatable(lua, "json");
+            } break;
+            case Json::Value::Type::Boolean: {
+                lua_pushboolean(lua, (bool)value ? 1 : 0);
+            } break;
+            case Json::Value::Type::FloatingPoint: {
+                lua_pushnumber(lua, (lua_Number)(double)value);
+            } break;
+            case Json::Value::Type::Integer: {
+                lua_pushinteger(lua, (lua_Integer)(int)value);
+            } break;
+            case Json::Value::Type::String: {
+                const auto valueAsString = (std::string)value;
+                lua_pushlstring(lua, valueAsString.c_str(), valueAsString.length());
+            } break;
+            case Json::Value::Type::Null:
+            case Json::Value::Type::Invalid:
+            default: {
+                lua_pushnil(lua);
+            }
+        }
+    }
+
+    /**
+     * Construct a new Json::Value based on a value on the Lua stack.
+     *
+     * @param[in] lua
+     *     This points to the Lua interpreter instance.
+     *
+     * @param[in] index
+     *     This is the index of the value on the Lua stack that will be wrapped.
+     *
+     * @return
+     *     The newly constructed Json::Value is returned.
+     */
+    Json::Value JsonValueFromLuaValue(
+        lua_State* lua,
+        int index
+    ) {
+        luaL_checkany(lua, index);
+        switch (lua_type(lua, index)) {
+            case LUA_TNIL: {
+                return Json::Value(nullptr);
+            } break;
+            case LUA_TNUMBER: {
+                if (lua_isinteger(lua, index)) {
+                    return Json::Value((int)lua_tointeger(lua, index));
+                } else {
+                    return Json::Value((double)lua_tonumber(lua, index));
+                }
+            } break;
+            case LUA_TBOOLEAN: {
+                return Json::Value(lua_toboolean(lua, index) != 0);
+            } break;
+            case LUA_TSTRING: {
+                return Json::Value(lua_tostring(lua, index));
+            } break;
+            default: {
+                (void)luaL_error(lua, "cannot construct a JSON value from a %s", lua_typename(lua, lua_type(lua, index)));
+            }
+        }
+        return Json::Value();
+    }
+
+    /**
+     * Extract the set of keys from the table at the given position in the Lua
+     * stack.
+     *
+     * @param[in] lua
+     *     This points to the Lua interpreter instance.
+     *
+     * @param[in] tableIndex
+     *     This is the index on the Lua stack where the table can be found.
+     *
+     * @return
+     *     The set of the keys from the Lua table is returned.
+     */
+    std::set< Json::Value > EnumerateKeys(lua_State* lua, int tableIndex) {
+        std::set< Json::Value > keys;
+        if (tableIndex < 0) {
+            tableIndex = lua_gettop(lua) + tableIndex + 1;
+        }
+        lua_pushnil(lua);  // -1 = key
+        while (lua_next(lua, tableIndex) != 0) { // -1 = value, -2 = key
+            (void)keys.insert(JsonValueFromLuaValue(lua, -2));
+            lua_pop(lua, 1); // -1 = key
+        } // (stack empty)
+        return keys;
+    }
+
+    /**
+     * Perform a "deep" comparison between two Lua tables.
+     *
+     * @param[in] lua
+     *     This points to the Lua interpreter instance.
+     *
+     * @param[in] lhsIndex
+     *     This is the index of the first table on the Lua stack.
+     *
+     * @param[in] rhsIndex
+     *     This is the index of the second table on the Lua stack.
+     *
+     * @param[in,out] keyChain
+     *     This is where the "path" through the table structure is
+     *     recorded, in the event that some difference is found.
+     *
+     * @return
+     *     If the two tables are identical, an empty string is returned.
+     *     Otherwise, a human-readable description of the mismatch
+     *     is returned.
+     */
+    std::string CompareLuaTables(
+        lua_State* lua,
+        int lhsIndex,
+        int rhsIndex,
+        std::vector< Json::Value >& keyChain
+    ) {
+        if (lhsIndex < 0) {
+            lhsIndex = lua_gettop(lua) + lhsIndex + 1;
+        }
+        if (rhsIndex < 0) {
+            rhsIndex = lua_gettop(lua) + rhsIndex + 1;
+        }
+        const auto lhsKeys = EnumerateKeys(lua, lhsIndex);
+        auto rhsKeys = EnumerateKeys(lua, rhsIndex);
+        for (const auto& lhsKey: lhsKeys) {
+            const auto rhsKeysEntry = rhsKeys.find(lhsKey);
+            if (rhsKeysEntry == rhsKeys.end()) {
+                return SystemAbstractions::sprintf(
+                    "Actual value missing key '%s'",
+                    lhsKey.ToEncoding().c_str()
+                );
+            } else {
+                /*
+                 * When using the keys to look up values in the two tables,
+                 * make sure to use the proper key types.  Keys for "array"
+                 * tables are numbers, not strings.  In other words, a
+                 * table that looks like this:
+                 *   { "a", "b", "c" }
+                 * Has these keys:  1, 2, 3
+                 * NOT these keys:  "1", "2", "3".
+                 */
+                LuaValueFromJsonValue(lua, lhsKey); // -1 = key
+                lua_pushvalue(lua, -1); // -1 = key, -2 = key
+                lua_gettable(lua, lhsIndex); // -1 = value(lhs), -2 = key
+                const auto lhsType = lua_typename(lua, -1);
+                lua_insert(lua, -2); // -1 = key, -2 = value(lhs)
+                lua_gettable(lua, rhsIndex); // -1 = value(rhs), -2 = value(lhs)
+                const auto rhsType = lua_typename(lua, -2);
+                std::string comparisonResult;
+                if (
+                    lua_istable(lua, -1)
+                    && lua_istable(lua, -2)
+                ) {
+                    keyChain.push_back(lhsKey);
+                    comparisonResult = CompareLuaTables(lua, -2, -1, keyChain);
+                    if (comparisonResult.empty()) {
+                        keyChain.pop_back();
+                    }
+                } else if (lua_compare(lua, -1, -2, LUA_OPEQ) == 0) {
+                    keyChain.push_back(lhsKey);
+                    comparisonResult = SystemAbstractions::sprintf(
+                        "Expected '%s', actual was '%s'\n",
+                        lua_tostring(lua, -1),
+                        lua_tostring(lua, -2)
+                    );
+                }
+                lua_pop(lua, 2); // (stack empty)
+                if (!comparisonResult.empty()) {
+                    return comparisonResult;
+                }
+                (void)rhsKeys.erase(rhsKeysEntry);
+            }
+        }
+        if (rhsKeys.empty()) {
+            return "";
+        } else {
+            return SystemAbstractions::sprintf(
+                "Actual value has extra key '%s'",
+                rhsKeys.begin()->ToEncoding().c_str()
+            );
+        }
     }
 
     /**
@@ -617,8 +819,29 @@ struct Runner::Impl {
      */
     static int LuaExpectEq(lua_State* lua) {
         auto self = *(Impl**)luaL_checkudata(lua, 1, "moonunit");
-        if (!lua_compare(lua, 2, 3, LUA_OPEQ)) {
-            self->currentTestFailed = true;
+        bool expectationFailed = false;
+        if (
+            lua_istable(lua, 2) // A
+            && lua_istable(lua, 3)  // B
+        ) {
+            std::vector< Json::Value > keyChain;
+            const auto comparisonResult = CompareLuaTables(lua, 2, 3, keyChain);
+            if (!comparisonResult.empty()) {
+                expectationFailed = true;
+                std::vector< std::string > keyChainAsStrings;
+                for (const auto& key: keyChain) {
+                    keyChainAsStrings.push_back(key.ToEncoding());
+                }
+                self->errorMessageDelegate(
+                    SystemAbstractions::sprintf(
+                        "Tables differ (path: %s) -- %s\n",
+                        SystemAbstractions::Join(keyChainAsStrings, ".").c_str(),
+                        comparisonResult.c_str()
+                    )
+                );
+            }
+        } else if (!lua_compare(lua, 2, 3, LUA_OPEQ)) {
+            expectationFailed = true;
             self->errorMessageDelegate(
                 SystemAbstractions::sprintf(
                     "Expected '%s', actual was '%s'\n",
@@ -626,6 +849,9 @@ struct Runner::Impl {
                     lua_tostring(lua, 3)
                 )
             );
+        }
+        if (expectationFailed) {
+            self->currentTestFailed = true;
             luaL_traceback(lua, lua, NULL, 1);
             self->errorMessageDelegate(
                 SystemAbstractions::sprintf(
