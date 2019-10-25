@@ -633,7 +633,25 @@ struct Runner::Impl {
      */
     static int LuaAssertEq(lua_State* lua) {
         auto self = *(Impl**)luaL_checkudata(lua, 1, "moonunit");
-        if (!lua_compare(lua, 2, 3, LUA_OPEQ)) {
+        if (
+            lua_istable(lua, 2)
+            && lua_istable(lua, 3)
+        ) {
+            std::vector< Json::Value > keyChain;
+            const auto comparisonResult = CompareLuaTables(lua, 2, 3, keyChain);
+            if (!comparisonResult.empty()) {
+                std::vector< std::string > keyChainAsStrings;
+                for (const auto& key: keyChain) {
+                    keyChainAsStrings.push_back(key.ToEncoding());
+                }
+                luaL_error(
+                    lua,
+                    "Tables differ (path: %s) -- %s\n",
+                    SystemAbstractions::Join(keyChainAsStrings, ".").c_str(),
+                    comparisonResult.c_str()
+                );
+            }
+        } else if (!lua_compare(lua, 2, 3, LUA_OPEQ)) {
             luaL_error(
                 lua,
                 "Expected '%s', actual was '%s'\n",
@@ -772,7 +790,19 @@ struct Runner::Impl {
      */
     static int LuaAssertNe(lua_State* lua) {
         auto self = *(Impl**)luaL_checkudata(lua, 1, "moonunit");
-        if (lua_compare(lua, 2, 3, LUA_OPEQ)) {
+        if (
+            lua_istable(lua, 2)
+            && lua_istable(lua, 3)
+        ) {
+            std::vector< Json::Value > keyChain;
+            const auto comparisonResult = CompareLuaTables(lua, 2, 3, keyChain);
+            if (comparisonResult.empty()) {
+                luaL_error(
+                    lua,
+                    "Tables should differ but are the same\n"
+                );
+            }
+        } else if (lua_compare(lua, 2, 3, LUA_OPEQ)) {
             luaL_error(
                 lua,
                 "Expected not '%s', actual was '%s'\n",
@@ -821,8 +851,8 @@ struct Runner::Impl {
         auto self = *(Impl**)luaL_checkudata(lua, 1, "moonunit");
         bool expectationFailed = false;
         if (
-            lua_istable(lua, 2) // A
-            && lua_istable(lua, 3)  // B
+            lua_istable(lua, 2)
+            && lua_istable(lua, 3)
         ) {
             std::vector< Json::Value > keyChain;
             const auto comparisonResult = CompareLuaTables(lua, 2, 3, keyChain);
@@ -1042,7 +1072,21 @@ struct Runner::Impl {
      */
     static int LuaExpectNe(lua_State* lua) {
         auto self = *(Impl**)luaL_checkudata(lua, 1, "moonunit");
-        if (lua_compare(lua, 2, 3, LUA_OPEQ)) {
+        if (
+            lua_istable(lua, 2)
+            && lua_istable(lua, 3)
+        ) {
+            std::vector< Json::Value > keyChain;
+            const auto comparisonResult = CompareLuaTables(lua, 2, 3, keyChain);
+            if (comparisonResult.empty()) {
+                self->currentTestFailed = true;
+                self->errorMessageDelegate(
+                    SystemAbstractions::sprintf(
+                        "Tables should differ but are the same\n"
+                    )
+                );
+            }
+        } else if (lua_compare(lua, 2, 3, LUA_OPEQ)) {
             self->currentTestFailed = true;
             self->errorMessageDelegate(
                 SystemAbstractions::sprintf(
