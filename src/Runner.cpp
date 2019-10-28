@@ -874,9 +874,11 @@ struct Runner::Impl {
             expectationFailed = true;
             self->errorMessageDelegate(
                 SystemAbstractions::sprintf(
-                    "Expected '%s', actual was '%s'\n",
+                    "Expected '%s' (%s), actual was '%s' (%s)\n",
                     lua_tostring(lua, 2),
-                    lua_tostring(lua, 3)
+                    luaL_typename(lua, 2),
+                    lua_tostring(lua, 3),
+                    luaL_typename(lua, 3)
                 )
             );
         }
