@@ -361,8 +361,8 @@ namespace {
                     keyChain.push_back(lhsKey);
                     comparisonResult = SystemAbstractions::sprintf(
                         "Expected '%s', actual was '%s'\n",
-                        lua_tostring(lua, -1),
-                        lua_tostring(lua, -2)
+                        lua_tostring(lua, -2),
+                        lua_tostring(lua, -1)
                     );
                 }
                 lua_pop(lua, 2); // (stack empty)
