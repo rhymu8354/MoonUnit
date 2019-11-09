@@ -164,6 +164,9 @@ The following tools and dependencies are required:
   [Visual Studio](https://www.visualstudio.com/) on Windows)
 * [googletest](https://github.com/google/googletest.git) - The Google C++ Test
   framework (only needed to test the `SystemAbstractions` dependency project)
+* [Json](https://github.com/rhymu8354/Json.git) - a library which implements
+  [RFC 7159](https://tools.ietf.org/html/rfc7159), "The JavaScript Object
+  Notation (JSON) Data Interchange Format".
 * [LuaLibrary](https://github.com/rhymu8354/lua.git) - a fork of
   [Lua](http://www.lua.org/) which includes a `CMakeLists.txt` file for
   incorporation into a CMake-based build system
