@@ -13,7 +13,7 @@
 #include <sstream>
 #include <stdlib.h>
 #include <string>
-#include <SystemAbstractions/StringExtensions.hpp>
+#include <StringExtensions/StringExtensions.hpp>
 #include <unordered_map>
 #include <vector>
 
@@ -326,7 +326,7 @@ namespace {
         for (const auto& lhsKey: lhsKeys) {
             const auto rhsKeysEntry = rhsKeys.find(lhsKey);
             if (rhsKeysEntry == rhsKeys.end()) {
-                return SystemAbstractions::sprintf(
+                return StringExtensions::sprintf(
                     "Actual value missing key '%s'",
                     lhsKey.ToEncoding().c_str()
                 );
@@ -359,7 +359,7 @@ namespace {
                     }
                 } else if (lua_compare(lua, -1, -2, LUA_OPEQ) == 0) {
                     keyChain.push_back(lhsKey);
-                    comparisonResult = SystemAbstractions::sprintf(
+                    comparisonResult = StringExtensions::sprintf(
                         "Expected '%s', actual was '%s'\n",
                         lua_tostring(lua, -2),
                         lua_tostring(lua, -1)
@@ -375,7 +375,7 @@ namespace {
         if (rhsKeys.empty()) {
             return "";
         } else {
-            return SystemAbstractions::sprintf(
+            return StringExtensions::sprintf(
                 "Actual value has extra key '%s'",
                 rhsKeys.begin()->ToEncoding().c_str()
             );
@@ -542,7 +542,7 @@ struct Runner::Impl {
                 errorMessage = "LUA_ERRGCMM";
             } break;
             default: {
-                errorMessage = SystemAbstractions::sprintf("(unexpected lua_load result: %d)", luaLoadResult);
+                errorMessage = StringExtensions::sprintf("(unexpected lua_load result: %d)", luaLoadResult);
             } break;
         }
         lua_settop(lua, 0);
@@ -567,7 +567,7 @@ struct Runner::Impl {
     ) {
         if (!file.Open()) {
             errorMessageDelegate(
-                SystemAbstractions::sprintf(
+                StringExtensions::sprintf(
                     "ERROR: Unable to open Lua script file '%s'",
                     file.GetPath().c_str()
                 )
@@ -579,7 +579,7 @@ struct Runner::Impl {
         file.Close();
         if (amountRead != buffer.size()) {
             errorMessageDelegate(
-                SystemAbstractions::sprintf(
+                StringExtensions::sprintf(
                     "ERROR: Unable to read Lua script file '%s'",
                     file.GetPath().c_str()
                 )
@@ -598,7 +598,7 @@ struct Runner::Impl {
             );
             if (!errorMessage.empty()) {
                 errorMessageDelegate(
-                    SystemAbstractions::sprintf(
+                    StringExtensions::sprintf(
                         "ERROR: Unable to load Lua script file '%s': %s",
                         file.GetPath().c_str(),
                         errorMessage.c_str()
@@ -647,7 +647,7 @@ struct Runner::Impl {
                 luaL_error(
                     lua,
                     "Tables differ (path: %s) -- %s\n",
-                    SystemAbstractions::Join(keyChainAsStrings, ".").c_str(),
+                    StringExtensions::Join(keyChainAsStrings, ".").c_str(),
                     comparisonResult.c_str()
                 );
             }
@@ -863,9 +863,9 @@ struct Runner::Impl {
                     keyChainAsStrings.push_back(key.ToEncoding());
                 }
                 self->errorMessageDelegate(
-                    SystemAbstractions::sprintf(
+                    StringExtensions::sprintf(
                         "Tables differ (path: %s) -- %s\n",
-                        SystemAbstractions::Join(keyChainAsStrings, ".").c_str(),
+                        StringExtensions::Join(keyChainAsStrings, ".").c_str(),
                         comparisonResult.c_str()
                     )
                 );
@@ -873,7 +873,7 @@ struct Runner::Impl {
         } else if (!lua_compare(lua, 2, 3, LUA_OPEQ)) {
             expectationFailed = true;
             self->errorMessageDelegate(
-                SystemAbstractions::sprintf(
+                StringExtensions::sprintf(
                     "Expected '%s' (%s), actual was '%s' (%s)\n",
                     lua_tostring(lua, 2),
                     luaL_typename(lua, 2),
@@ -886,7 +886,7 @@ struct Runner::Impl {
             self->currentTestFailed = true;
             luaL_traceback(lua, lua, NULL, 1);
             self->errorMessageDelegate(
-                SystemAbstractions::sprintf(
+                StringExtensions::sprintf(
                     "%s\n",
                     lua_tostring(lua, -1)
                 )
@@ -913,14 +913,14 @@ struct Runner::Impl {
             const std::string actual = luaL_tolstring(lua, 2, NULL);
             lua_pop(lua, 1);
             self->errorMessageDelegate(
-                SystemAbstractions::sprintf(
+                StringExtensions::sprintf(
                     "Expected '%s' to be false\n",
                     actual.c_str()
                 )
             );
             luaL_traceback(lua, lua, NULL, 1);
             self->errorMessageDelegate(
-                SystemAbstractions::sprintf(
+                StringExtensions::sprintf(
                     "%s\n",
                     lua_tostring(lua, -1)
                 )
@@ -945,7 +945,7 @@ struct Runner::Impl {
         if (lua_compare(lua, 2, 3, LUA_OPLT)) {
             self->currentTestFailed = true;
             self->errorMessageDelegate(
-                SystemAbstractions::sprintf(
+                StringExtensions::sprintf(
                     "expected '%s' >= '%s'\n",
                     lua_tostring(lua, 2),
                     lua_tostring(lua, 3)
@@ -953,7 +953,7 @@ struct Runner::Impl {
             );
             luaL_traceback(lua, lua, NULL, 1);
             self->errorMessageDelegate(
-                SystemAbstractions::sprintf(
+                StringExtensions::sprintf(
                     "%s\n",
                     lua_tostring(lua, -1)
                 )
@@ -978,7 +978,7 @@ struct Runner::Impl {
         if (lua_compare(lua, 2, 3, LUA_OPLE)) {
             self->currentTestFailed = true;
             self->errorMessageDelegate(
-                SystemAbstractions::sprintf(
+                StringExtensions::sprintf(
                     "expected '%s' > '%s'\n",
                     lua_tostring(lua, 2),
                     lua_tostring(lua, 3)
@@ -986,7 +986,7 @@ struct Runner::Impl {
             );
             luaL_traceback(lua, lua, NULL, 1);
             self->errorMessageDelegate(
-                SystemAbstractions::sprintf(
+                StringExtensions::sprintf(
                     "%s\n",
                     lua_tostring(lua, -1)
                 )
@@ -1011,7 +1011,7 @@ struct Runner::Impl {
         if (!lua_compare(lua, 2, 3, LUA_OPLE)) {
             self->currentTestFailed = true;
             self->errorMessageDelegate(
-                SystemAbstractions::sprintf(
+                StringExtensions::sprintf(
                     "expected '%s' <= '%s'\n",
                     lua_tostring(lua, 2),
                     lua_tostring(lua, 3)
@@ -1019,7 +1019,7 @@ struct Runner::Impl {
             );
             luaL_traceback(lua, lua, NULL, 1);
             self->errorMessageDelegate(
-                SystemAbstractions::sprintf(
+                StringExtensions::sprintf(
                     "%s\n",
                     lua_tostring(lua, -1)
                 )
@@ -1044,7 +1044,7 @@ struct Runner::Impl {
         if (!lua_compare(lua, 2, 3, LUA_OPLT)) {
             self->currentTestFailed = true;
             self->errorMessageDelegate(
-                SystemAbstractions::sprintf(
+                StringExtensions::sprintf(
                     "expected '%s' < '%s'\n",
                     lua_tostring(lua, 2),
                     lua_tostring(lua, 3)
@@ -1052,7 +1052,7 @@ struct Runner::Impl {
             );
             luaL_traceback(lua, lua, NULL, 1);
             self->errorMessageDelegate(
-                SystemAbstractions::sprintf(
+                StringExtensions::sprintf(
                     "%s\n",
                     lua_tostring(lua, -1)
                 )
@@ -1083,7 +1083,7 @@ struct Runner::Impl {
             if (comparisonResult.empty()) {
                 self->currentTestFailed = true;
                 self->errorMessageDelegate(
-                    SystemAbstractions::sprintf(
+                    StringExtensions::sprintf(
                         "Tables should differ but are the same\n"
                     )
                 );
@@ -1091,7 +1091,7 @@ struct Runner::Impl {
         } else if (lua_compare(lua, 2, 3, LUA_OPEQ)) {
             self->currentTestFailed = true;
             self->errorMessageDelegate(
-                SystemAbstractions::sprintf(
+                StringExtensions::sprintf(
                     "Expected not '%s', actual was '%s'\n",
                     lua_tostring(lua, 2),
                     lua_tostring(lua, 3)
@@ -1099,7 +1099,7 @@ struct Runner::Impl {
             );
             luaL_traceback(lua, lua, NULL, 1);
             self->errorMessageDelegate(
-                SystemAbstractions::sprintf(
+                StringExtensions::sprintf(
                     "%s\n",
                     lua_tostring(lua, -1)
                 )
@@ -1126,14 +1126,14 @@ struct Runner::Impl {
             const std::string actual = luaL_tolstring(lua, 2, NULL);
             lua_pop(lua, 1);
             self->errorMessageDelegate(
-                SystemAbstractions::sprintf(
+                StringExtensions::sprintf(
                     "Expected '%s' to be true\n",
                     actual.c_str()
                 )
             );
             luaL_traceback(lua, lua, NULL, 1);
             self->errorMessageDelegate(
-                SystemAbstractions::sprintf(
+                StringExtensions::sprintf(
                     "%s\n",
                     lua_tostring(lua, -1)
                 )
@@ -1302,8 +1302,8 @@ void Runner::Configure(
         return;
     }
     const std::string configuration(buffer.begin(), buffer.end());
-    for (const auto& line: SystemAbstractions::Split(configuration, '\n')) {
-        auto searchPath = SystemAbstractions::Trim(line);
+    for (const auto& line: StringExtensions::Split(configuration, '\n')) {
+        auto searchPath = StringExtensions::Trim(line);
         if (!SystemAbstractions::File::IsAbsolutePath(searchPath)) {
             searchPath = (
                 ParentFolderPath(configurationFile.GetPath())
@@ -1400,7 +1400,7 @@ bool Runner::RunTest(
     const auto testSuitesEntry = impl_->testSuites.find(testSuiteName);
     if (testSuitesEntry == impl_->testSuites.end()) {
         errorMessageDelegate(
-            SystemAbstractions::sprintf(
+            StringExtensions::sprintf(
                 "ERROR: No test suite '%s' found",
                 testSuiteName.c_str()
             )
@@ -1411,7 +1411,7 @@ bool Runner::RunTest(
     const auto testsEntry = testSuite.tests.find(testName);
     if (testsEntry == testSuite.tests.end()) {
         errorMessageDelegate(
-            SystemAbstractions::sprintf(
+            StringExtensions::sprintf(
                 "ERROR: No test '%s' found in test suite '%s'",
                 testName.c_str(),
                 testSuiteName.c_str()
@@ -1440,7 +1440,7 @@ bool Runner::RunTest(
                 if (luaPCallResult != LUA_OK) {
                     if (!lua_isnil(impl_->lua, -1)) {
                         errorMessageDelegate(
-                            SystemAbstractions::sprintf(
+                            StringExtensions::sprintf(
                                 "ERROR: %s\n",
                                 lua_tostring(impl_->lua, -1)
                             )
@@ -1455,7 +1455,7 @@ bool Runner::RunTest(
         if (!errorMessage.empty()) {
             impl_->currentTestFailed = true;
             errorMessageDelegate(
-                SystemAbstractions::sprintf(
+                StringExtensions::sprintf(
                     "ERROR: Unable to load Lua script file '%s': %s",
                     test.filePath.c_str(),
                     errorMessage.c_str()

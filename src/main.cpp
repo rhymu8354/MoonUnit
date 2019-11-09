@@ -13,8 +13,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string>
+#include <StringExtensions/StringExtensions.hpp>
 #include <SystemAbstractions/File.hpp>
-#include <SystemAbstractions/StringExtensions.hpp>
 #include <SystemAbstractions/Time.hpp>
 #include <unordered_map>
 #include <unordered_set>
@@ -67,7 +67,7 @@ namespace {
                 + path
             );
         }
-        auto segmentsIn = SystemAbstractions::Split(path, '/');
+        auto segmentsIn = StringExtensions::Split(path, '/');
         decltype(segmentsIn) segmentsOut;
         for (const auto& segment: segmentsIn) {
             if (segment == ".") {
@@ -81,7 +81,7 @@ namespace {
                 segmentsOut.push_back(segment);
             }
         }
-        return SystemAbstractions::Join(segmentsOut, "/");
+        return StringExtensions::Join(segmentsOut, "/");
     }
 
     /**
@@ -284,7 +284,7 @@ int main(int argc, char* argv[]) {
     // folder that contains a ".moonunit" file, and configure the runner
     // using it (and any other ".moonunit" files found indirectly).
     Runner runner;
-    const auto searchPathSegments = SystemAbstractions::Split(
+    const auto searchPathSegments = StringExtensions::Split(
         CanonicalPath(environment.searchPath),
         '/'
     );
@@ -295,7 +295,7 @@ int main(int argc, char* argv[]) {
         );
         possibleConfigurationFilePathSegments.push_back(".moonunit");
         SystemAbstractions::File possibleConfigurationFile(
-            SystemAbstractions::Join(possibleConfigurationFilePathSegments, "/")
+            StringExtensions::Join(possibleConfigurationFilePathSegments, "/")
         );
         if (possibleConfigurationFile.IsExisting()) {
             runner.Configure(
@@ -319,7 +319,7 @@ int main(int argc, char* argv[]) {
         }
     } else {
         printf("Note: Google Test filter = %s\n", environment.filter.c_str());
-        for (const auto& filter: SystemAbstractions::Split(environment.filter, ':')) {
+        for (const auto& filter: StringExtensions::Split(environment.filter, ':')) {
             ++totalTestSuites;
             const auto delimiterIndex = filter.find('.');
             if (delimiterIndex != std::string::npos) {
@@ -399,7 +399,7 @@ int main(int argc, char* argv[]) {
                     );
                 } else {
                     failed.push_back(
-                        SystemAbstractions::sprintf(
+                        StringExtensions::sprintf(
                             "%s.%s",
                             testSuiteName.c_str(),
                             testName.c_str()

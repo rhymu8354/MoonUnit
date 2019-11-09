@@ -85,6 +85,7 @@ if(ParentDirectory STREQUAL "")
 
     # All other libraries can be pulled in without further configuration.
     add_subdirectory(Json)
+    add_subdirectory(StringExtensions)
     add_subdirectory(SystemAbstractions)
     add_subdirectory(Utf8)
 
@@ -109,6 +110,7 @@ set_target_properties(${This} PROPERTIES
 target_link_libraries(${This} PUBLIC
     Json
     LuaLibrary
+    StringExtensions
     SystemAbstractions
 )
 
