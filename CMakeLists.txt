@@ -84,8 +84,10 @@ if(ParentDirectory STREQUAL "")
     endforeach()
 
     # All other libraries can be pulled in without further configuration.
+    add_subdirectory(Base64)
     add_subdirectory(Json)
     add_subdirectory(SystemAbstractions)
+    add_subdirectory(Utf8)
 
     # Set runtime output directory to the same as the binary directory.
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})

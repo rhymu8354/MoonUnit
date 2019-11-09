@@ -2,6 +2,11 @@
 <workspace>
     <repositories>
         <repository
+            path="Base64"
+            url="git@github.com:rhymu8354/Base64.git"
+            branch="master"
+            />
+        <repository
             path="Json"
             url="git@github.com:rhymu8354/Json.git"
             branch="master"
@@ -9,6 +14,11 @@
         <repository
             path="SystemAbstractions"
             url="git@github.com:rhymu8354/SystemAbstractions.git"
+            branch="master"
+            />
+        <repository
+            path="Utf8"
+            url="git@github.com:rhymu8354/Utf8.git"
             branch="master"
             />
         <repository
