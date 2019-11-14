@@ -565,7 +565,7 @@ struct Runner::Impl {
         SystemAbstractions::File& file,
         ErrorMessageDelegate errorMessageDelegate
     ) {
-        if (!file.Open()) {
+        if (!file.OpenReadOnly()) {
             errorMessageDelegate(
                 StringExtensions::sprintf(
                     "ERROR: Unable to open Lua script file '%s'",
@@ -1292,7 +1292,7 @@ void Runner::Configure(
     SystemAbstractions::File& configurationFile,
     ErrorMessageDelegate errorMessageDelegate
 ) {
-    if (!configurationFile.Open()) {
+    if (!configurationFile.OpenReadOnly()) {
         return;
     }
     SystemAbstractions::IFile::Buffer buffer(configurationFile.GetSize());
