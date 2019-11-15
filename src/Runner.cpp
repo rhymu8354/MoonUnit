@@ -444,9 +444,9 @@ struct Runner::Impl {
 
     ~Impl() = default;
     Impl(const Impl&) = delete;
-    Impl(Impl&&) noexcept = default;
+    Impl(Impl&&) = default;
     Impl& operator=(const Impl&) = delete;
-    Impl& operator=(Impl&&) noexcept = default;
+    Impl& operator=(Impl&&) = default;
 
     // Methods
 
