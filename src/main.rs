@@ -38,17 +38,19 @@ fn main() {
     // folder that contains a ".moonunit" file, and configure the runner
     // using it (and any other ".moonunit" files found indirectly).
     let mut runner = runner::Runner::new();
-    let canonical_path = opts.path.canonicalize().unwrap();
-    let search_path_segments: Vec<_> = canonical_path.components().collect();
-    for i in 2..search_path_segments.len()+1 {
-        let mut possible_configuration_file: std::path::PathBuf =
-            search_path_segments[0..i].iter().collect();
+    for path in opts.path.canonicalize().unwrap()
+        .ancestors()
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+    {
+        let mut possible_configuration_file = path.to_path_buf();
         possible_configuration_file.push(".moonunit");
         println!(
             "Possible configuration file: {}",
             possible_configuration_file.to_string_lossy()
         );
-        if possible_configuration_file.exists() {
+        if possible_configuration_file.is_file() {
             runner.configure(
                 &possible_configuration_file,
                 |message| {
