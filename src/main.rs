@@ -1,3 +1,5 @@
+#![warn(clippy::pedantic)]
+
 mod runner;
 
 use structopt::StructOpt;
@@ -46,36 +48,18 @@ fn main() {
     {
         let mut possible_configuration_file = path.to_path_buf();
         possible_configuration_file.push(".moonunit");
-        println!(
-            "Possible configuration file: {}",
-            possible_configuration_file.to_string_lossy()
-        );
         if possible_configuration_file.is_file() {
             runner.configure(
                 &possible_configuration_file,
-                |message| {
+                &mut |message| {
                     eprintln!("{}", message);
                 }
             )
         }
     }
 
-    // for (size_t i = 1; i <= searchPathSegments.size(); ++i) {
-    //     std::vector< std::string > possibleConfigurationFilePathSegments(
-    //         searchPathSegments.begin(),
-    //         searchPathSegments.begin() + i
-    //     );
-    //     possibleConfigurationFilePathSegments.push_back(".moonunit");
-    //     SystemAbstractions::File possibleConfigurationFile(
-    //         StringExtensions::Join(possibleConfigurationFilePathSegments, "/")
-    //     );
-    //     if (possibleConfigurationFile.IsExisting()) {
-    //         runner.Configure(
-    //             possibleConfigurationFile,
-    //             [](const std::string& message){
-    //                 (void)fwrite(message.data(), message.length(), 1, stderr);
-    //             }
-    //         );
-    //     }
-    // }
+    // List out all test suites.
+    for test_suite in runner.get_test_suites() {
+        println!("Test suite: {}", test_suite);
+    }
 }
