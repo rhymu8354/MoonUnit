@@ -30,7 +30,7 @@ impl FixPathNonsense for &str {
     fn fix_silly_path_delimiter_nonsense(
         &self
     ) -> std::borrow::Cow<str> {
-        String::from(self)
+        std::borrow::Cow::from(*self)
     }
 }
 
