@@ -1,18 +1,18 @@
 use std::io::Read;
 
-struct Test<'lua> {
+struct Test {
     file: String,
     file_path: String,
     line_number: usize,
-    test_fn: mlua::Function<'lua>,
+    // test_fn: mlua::Function,
 }
 
 #[derive(Default)]
-struct TestSuite<'lua> {
-    tests: std::collections::HashMap<String, Test<'lua>>,
+struct TestSuite {
+    tests: std::collections::HashMap<String, Test>,
 }
 
-type TestSuites<'lua> = std::collections::HashMap<String, TestSuite<'lua>>;
+type TestSuites = std::collections::HashMap<String, TestSuite>;
 
 trait FixPathNonsense {
     fn fix_silly_path_delimiter_nonsense(&self) -> std::borrow::Cow<str>;
@@ -34,24 +34,25 @@ impl FixPathNonsense for &str {
     }
 }
 
-struct MoonUnit<'lua> {
-    test_suites: TestSuites<'lua>,
+#[derive(Clone)]
+struct TestSuitesHolder {
+    inner: std::rc::Rc<std::cell::RefCell<TestSuites>>
 }
 
-impl<'lua> MoonUnit<'lua> {
+impl TestSuitesHolder {
     fn new() -> Self {
         Self {
-            test_suites: TestSuites::new(),
+            inner: std::rc::Rc::new(
+                std::cell::RefCell::new(
+                    TestSuites::new()
+                )
+            ),
         }
     }
 }
 
-struct MoonUnitHolder<'lua> {
-    moon_unit: std::rc::Rc<std::cell::RefCell<MoonUnit<'lua>>>,
-}
-
-impl<'lua> mlua::UserData for MoonUnitHolder<'lua> {
-    fn add_methods<'a, M: mlua::UserDataMethods<'a, Self>>(methods: &mut M) {
+impl mlua::UserData for TestSuitesHolder {
+    fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method_mut(
             "test",
             |
@@ -59,14 +60,16 @@ impl<'lua> mlua::UserData for MoonUnitHolder<'lua> {
                 this,
                 (suite, name, test): (String, String, mlua::Function)
             | {
-                let mut this = this.moon_unit.borrow_mut();
-                let mut suite = this.test_suites.entry(suite).or_default();
+                let mut test_suites = this.inner.borrow_mut();
+                let suite = test_suites.entry(suite).or_default();
+                let test_source = dbg!(test.source());
+                #[allow(clippy::cast_sign_loss)]
                 suite.tests.entry(name).or_insert_with(
                     || Test{
                         file: String::from("TBD"),
                         file_path: String::from("TBD"),
-                        line_number: 0,
-                        test_fn: test,
+                        line_number: test_source.line_defined as usize,
+                        // test_fn: test,
                     }
                 );
                 // println!("Test: {}:{}", suite, name);
@@ -76,11 +79,11 @@ impl<'lua> mlua::UserData for MoonUnitHolder<'lua> {
     }
 }
 
-pub struct Runner<'lua> {
-    moon_unit: std::rc::Rc<std::cell::RefCell<MoonUnit<'lua>>>,
+pub struct Runner {
+    test_suites: TestSuitesHolder,
 }
 
-impl<'lua> Runner<'lua> {
+impl Runner {
     pub fn configure<E, P>(
         &mut self,
         configuration_file_path: P,
@@ -154,9 +157,9 @@ impl<'lua> Runner<'lua> {
         // a new vector/iterator since the test suites are inside a cell,
         // meaning you can't get to them without borrowing, which we're
         // not allowed to return (can't return something we borrow inside).
-        self.moon_unit    // Start with our data in a cell
-            .borrow()     // Open up the cell...
-            .test_suites  // ...to borrow the test suites inside
+        self.test_suites
+            .inner
+            .borrow()
             .keys()       // Iterate the test suite keys (the names of them)
             .cloned()     // Make copies of each name
             .collect::<Vec<String>>()  // Push them all into a vector
@@ -216,11 +219,7 @@ impl<'lua> Runner<'lua> {
 
     pub fn new() -> Self {
         Self {
-            moon_unit: std::rc::Rc::new(
-                std::cell::RefCell::new(
-                    MoonUnit::new()
-                )
-            ),
+            test_suites: TestSuitesHolder::new(),
         }
     }
 
@@ -236,9 +235,7 @@ impl<'lua> Runner<'lua> {
         let mut lua = mlua::Lua::new();
         lua.globals().set(
             "moonunit",
-            MoonUnitHolder{
-                moon_unit: std::rc::Rc::clone(&self.moon_unit),
-            }
+            self.test_suites.clone()
         ).unwrap();
         f(self, &mut lua);
     }
