@@ -1,19 +1,5 @@
 use std::io::Read;
 
-struct Test {
-    file: String,
-    file_path: String,
-    line_number: usize,
-    // test_fn: mlua::Function,
-}
-
-#[derive(Default)]
-struct TestSuite {
-    tests: std::collections::HashMap<String, Test>,
-}
-
-type TestSuites = std::collections::HashMap<String, TestSuite>;
-
 trait FixPathNonsense {
     fn fix_silly_path_delimiter_nonsense(&self) -> std::borrow::Cow<str>;
 }
@@ -34,62 +20,353 @@ impl FixPathNonsense for &str {
     }
 }
 
-#[derive(Clone)]
-struct TestSuitesHolder {
-    inner: std::rc::Rc<std::cell::RefCell<TestSuites>>
+struct Test {
+    file: String,
+    path: std::path::PathBuf,
+    line_number: usize,
 }
 
-impl TestSuitesHolder {
+#[derive(Default)]
+struct TestSuite {
+    tests: std::collections::HashMap<String, Test>,
+}
+
+type TestSuites = std::collections::HashMap<String, TestSuite>;
+
+struct RunnerInner {
+    current_test_failed: bool,
+    test_suites: TestSuites,
+}
+
+impl RunnerInner {
     fn new() -> Self {
         Self {
-            inner: std::rc::Rc::new(
-                std::cell::RefCell::new(
-                    TestSuites::new()
-                )
-            ),
+            current_test_failed: false,
+            test_suites: TestSuites::new(),
         }
     }
 }
 
-impl mlua::UserData for TestSuitesHolder {
+fn render(value: &mlua::Value) -> String {
+    match value {
+        mlua::Value::Nil => {
+            String::from("nil")
+        },
+        mlua::Value::Boolean(value) => {
+            format!("{}", value)
+        },
+        mlua::Value::Integer(value) => {
+            format!("{}", value)
+        },
+        mlua::Value::Number(value) => {
+            format!("{}", value)
+        },
+        mlua::Value::String(value) => {
+            format!("\"{}\"", value.to_str().unwrap())
+        },
+        _ => {
+            format!("{:?}", value)
+        },
+    }
+}
+
+struct LuaValueForDisplay<'lua>(&'lua mlua::Value<'lua>);
+
+impl<'lua> std::fmt::Display for LuaValueForDisplay<'lua> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.0 {
+            mlua::Value::Nil => {
+                write!(f, "nil")
+            },
+            mlua::Value::Boolean(value) => {
+                write!(f, "{} (boolean)", value)
+            },
+            mlua::Value::Integer(value) => {
+                write!(f, "{} (integer)", value)
+            },
+            mlua::Value::Number(value) => {
+                write!(f, "{} (number)", value)
+            },
+            mlua::Value::String(value) => {
+                write!(f, "\"{}\" (string)", value.to_str().unwrap())
+            },
+            _ => {
+                write!(f, "{:?}", self.0)
+            },
+        }
+    }
+}
+
+struct OrderedLuaValue<'lua>(mlua::Value<'lua>);
+
+impl<'lua> PartialEq for OrderedLuaValue<'lua> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.eq(&other.0)
+    }
+}
+
+impl<'lua> Eq for OrderedLuaValue<'lua> {
+    fn assert_receiver_is_total_eq(&self) {}
+}
+
+impl<'lua> PartialOrd for OrderedLuaValue<'lua> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<'lua> Ord for OrderedLuaValue<'lua> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        let self_type_name = self.0.type_name();
+        let other_type_name = other.0.type_name();
+        if self_type_name == other_type_name {
+            match &self.0 {
+                mlua::Value::Boolean(value) => {
+                    if let mlua::Value::Boolean(other_value) = &other.0 {
+                        value.cmp(other_value)
+                    } else {
+                        panic!()
+                    }
+                },
+                mlua::Value::Integer(value) => {
+                    if let mlua::Value::Integer(other_value) = &other.0 {
+                        value.cmp(other_value)
+                    } else {
+                        panic!()
+                    }
+                },
+                mlua::Value::Number(value) => {
+                    if let mlua::Value::Number(other_value) = &other.0 {
+                        if value < other_value {
+                            std::cmp::Ordering::Less
+                        } else if value > other_value {
+                            std::cmp::Ordering::Greater
+                        } else {
+                            std::cmp::Ordering::Equal
+                        }
+                    } else {
+                        panic!()
+                    }
+                },
+                mlua::Value::String(value) => {
+                    if let mlua::Value::String(other_value) = &other.0 {
+                        value.to_str().unwrap().cmp(other_value.to_str().unwrap())
+                    } else {
+                        panic!()
+                    }
+                },
+                _ => {
+                    std::cmp::Ordering::Equal
+                },
+            }
+        } else {
+            self_type_name.cmp(other_type_name)
+        }
+    }
+}
+
+struct RunContext {
+    errors: std::rc::Rc<std::cell::RefCell<Vec<String>>>,
+    file: String,
+    path: std::path::PathBuf,
+    runner: Runner,
+    tests_registry_key: std::rc::Rc<mlua::RegistryKey>,
+}
+
+impl mlua::UserData for RunContext {
     fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method_mut(
             "test",
             |
-                _lua,
+                lua,
                 this,
                 (suite, name, test): (String, String, mlua::Function)
             | {
-                let mut test_suites = this.inner.borrow_mut();
+                // Get line number information about the provided function.
+                let test_source = test.source();
+
+                // Make sure there is a table for this suite of tests.
+                let tests_table: mlua::Table = lua.registry_value(&this.tests_registry_key)?;
+                if !tests_table.contains_key(suite.clone())? {
+                    tests_table.set(suite.clone(), lua.create_table()?)?;
+                }
+
+                // Store the function in the tests table.
+                let tests: mlua::Table = tests_table.get(suite.clone())?;
+                tests.set(name.clone(), test)?;
+
+                // Add information about the test to the runner.
+                let test_suites = &mut this.runner.inner.borrow_mut().test_suites;
                 let suite = test_suites.entry(suite).or_default();
-                let test_source = dbg!(test.source());
                 #[allow(clippy::cast_sign_loss)]
                 suite.tests.entry(name).or_insert_with(
                     || Test{
-                        file: String::from("TBD"),
-                        file_path: String::from("TBD"),
+                        file: this.file.clone(),
+                        path: this.path.clone(),
                         line_number: test_source.line_defined as usize,
-                        // test_fn: test,
                     }
                 );
-                // println!("Test: {}:{}", suite, name);
+                Ok(())
+            }
+        );
+
+        methods.add_method_mut(
+            "expect_eq",
+            |
+                lua,
+                this,
+                (lhs, rhs): (mlua::Value, mlua::Value)
+            | {
+                let mut expectation_failed = false;
+                if let (mlua::Value::Table(lhs), mlua::Value::Table(rhs)) = (&lhs, &rhs) {
+                    let (message, key_chain) = RunContext::compare_lua_tables(lhs, rhs, Vec::new());
+                    if !message.is_empty() {
+                        expectation_failed = true;
+                        this.errors.borrow_mut().push(
+                            format!(
+                                "Tables differ (path: {}) -- {}",
+                                key_chain
+                                    .into_iter()
+                                    .map(
+                                        |value| render(&value)
+                                    )
+                                    .fold(
+                                        String::new(),
+                                        |mut chain, key| {
+                                            if !chain.is_empty() {
+                                                chain.push('.');
+                                            }
+                                            chain += &key;
+                                            chain
+                                        }
+                                    ),
+                                message
+                            )
+                        )
+                    }
+                } else if lhs != rhs {
+                    expectation_failed = true;
+                    this.errors.borrow_mut().push(
+                        format!(
+                            "Expected {}, actual was {}",
+                            LuaValueForDisplay(&lhs),
+                            LuaValueForDisplay(&rhs),
+                        )
+                    );
+                }
+                if expectation_failed {
+                    this.runner.inner.borrow_mut().current_test_failed = true;
+                    let traceback: String = lua
+                        .load("debug.traceback(nil, 3)")
+                        .eval()?;
+                    this.errors.borrow_mut().push(traceback);
+                }
                 Ok(())
             }
         );
     }
 }
 
+impl RunContext {
+    #[allow(dead_code)]
+    fn compare_lua_tables<'lua>(
+        lhs: &mlua::Table<'lua>,
+        rhs: &mlua::Table<'lua>,
+        mut key_chain: Vec<mlua::Value<'lua>>
+    ) -> (String, Vec<mlua::Value<'lua>>) {
+        let lhs_keys = lhs
+            .clone()
+            .pairs::<mlua::Value, mlua::Value>()
+            .map(|pair| OrderedLuaValue(pair.unwrap().0));
+        let mut rhs_keys = rhs
+            .clone()
+            .pairs::<mlua::Value, mlua::Value>()
+            .map(|pair| OrderedLuaValue(pair.unwrap().0))
+            .collect::<std::collections::BTreeSet<OrderedLuaValue>>();
+        for key in lhs_keys {
+            key_chain = match rhs_keys.get(&key) {
+                None => {
+                    return (
+                        format!(
+                            "Actual value missing key {}",
+                            LuaValueForDisplay(&key.0)
+                        ),
+                        key_chain
+                    );
+                },
+                Some(_) => {
+                    let lhs = lhs.get(key.0.clone()).unwrap();
+                    let rhs = rhs.get(key.0.clone()).unwrap();
+                    let (message, key_chain) = if let (mlua::Value::Table(lhs), mlua::Value::Table(rhs)) = (&lhs, &rhs) {
+                        key_chain.push(key.0.clone());
+                        let (message, mut key_chain) = RunContext::compare_lua_tables(&lhs, &rhs, key_chain);
+                        if message.is_empty() {
+                            key_chain.pop();
+                        }
+                        (message, key_chain)
+                    } else if lhs == rhs {
+                        (String::from(""), key_chain)
+                    } else {
+                        key_chain.push(key.0.clone());
+                        (
+                            format!(
+                                "Expected {}, actual was {}",
+                                LuaValueForDisplay(&lhs),
+                                LuaValueForDisplay(&rhs),
+                            ),
+                            key_chain
+                        )
+                    };
+                    if !message.is_empty() {
+                        return (message, key_chain);
+                    }
+                    rhs_keys.remove(&key);
+                    key_chain
+                },
+            };
+        }
+        if rhs_keys.is_empty() {
+            (String::from(""), key_chain)
+        } else {
+            (
+                format!(
+                    "Actual value has extra key '{}'",
+                    LuaValueForDisplay(&rhs_keys.into_iter().next().unwrap().0)
+                ),
+                key_chain
+            )
+        }
+    }
+
+    fn new(
+        errors: &std::rc::Rc<std::cell::RefCell<Vec<String>>>,
+        file: &str,
+        path: &std::path::Path,
+        runner: &Runner,
+        tests_registry_key: &std::rc::Rc<mlua::RegistryKey>,
+    ) -> Self {
+        Self {
+            errors: errors.clone(),
+            file: file.to_owned(),
+            path: path.to_owned(),
+            runner: runner.clone(),
+            tests_registry_key: tests_registry_key.clone(),
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct Runner {
-    test_suites: TestSuitesHolder,
+    inner: std::rc::Rc<std::cell::RefCell<RunnerInner>>,
 }
 
 impl Runner {
     pub fn configure<E, P>(
         &mut self,
         configuration_file_path: P,
-        mut error_delegate: &mut E
+        error_delegate: E
     ) where
-        E: FnMut(&str),
+        E: FnMut(String) + Copy,
         P: AsRef<std::path::Path>
     {
         let configuration_file_path = configuration_file_path.as_ref();
@@ -133,33 +410,47 @@ impl Runner {
                                 .map_or(false, |extension| extension == "lua")
                         })
                     {
-                        self.load_test_suite(path, &mut error_delegate);
+                        self.load_test_suite(path, error_delegate);
                     }
                 }
             } else {
-                self.load_test_suite(search_path, &mut error_delegate);
+                self.load_test_suite(search_path, error_delegate);
             }
         }
     }
 
-    fn find_tests(
-        &mut self,
-        lua: &mut mlua::Lua,
-        script: &str,
-        path: &std::path::Path,
-    ) {
+    pub fn get_report(&self) -> String {
+        String::from("Hello, World!")
     }
 
-    pub fn get_test_suites(
+    pub fn get_test_names<S>(
+        &self,
+        suite: S,
+    ) -> impl std::iter::Iterator<Item=String> where
+        S: AsRef<str>
+    {
+        self.inner
+            .borrow()
+            .test_suites
+            .get(suite.as_ref())
+            .unwrap()
+            .tests
+            .keys()       // Iterate the test suite keys (the names of them)
+            .cloned()     // Make copies of each name
+            .collect::<Vec<String>>()  // Push them all into a vector
+            .into_iter()  // Turn this into an iterator
+    }
+
+    pub fn get_test_suite_names(
         &self,
     ) -> impl std::iter::Iterator<Item=String> {
         // We have to completely enumerate the test suites and form
         // a new vector/iterator since the test suites are inside a cell,
         // meaning you can't get to them without borrowing, which we're
         // not allowed to return (can't return something we borrow inside).
-        self.test_suites
-            .inner
+        self.inner
             .borrow()
+            .test_suites
             .keys()       // Iterate the test suite keys (the names of them)
             .cloned()     // Make copies of each name
             .collect::<Vec<String>>()  // Push them all into a vector
@@ -169,9 +460,9 @@ impl Runner {
     pub fn load_test_suite<E, P>(
         &mut self,
         file_path: P,
-        error_delegate: &mut E,
+        mut error_delegate: E,
     ) where
-        E: FnMut(&str),
+        E: FnMut(String) + Copy,
         P: AsRef<std::path::Path>
     {
         let file_path = file_path.as_ref();
@@ -179,7 +470,7 @@ impl Runner {
             file
         } else {
             error_delegate(
-                &format!(
+                format!(
                     "ERROR: Unable to open Lua script file '{}'",
                     file_path.display()
                 )
@@ -189,7 +480,7 @@ impl Runner {
         let mut script = String::new();
         if file.read_to_string(&mut script).is_err() {
             error_delegate(
-                &format!(
+                format!(
                     "ERROR: Unable to read Lua script file '{}'",
                     file_path.display()
                 )
@@ -199,14 +490,15 @@ impl Runner {
         self.with_lua(|runner, lua| {
             match runner.with_script(
                 lua,
+                error_delegate,
                 &script,
                 file_path,
-                |runner, lua| runner.find_tests(lua, &script, file_path)
+                |_, _, _| Ok(())
             ) {
                 Ok(_) => (),
                 Err(error) => {
                     error_delegate(
-                        &format!(
+                        format!(
                             "ERROR: Unable to load Lua script file '{}': {}",
                             file_path.display(),
                             error
@@ -219,8 +511,105 @@ impl Runner {
 
     pub fn new() -> Self {
         Self {
-            test_suites: TestSuitesHolder::new(),
+            inner: std::rc::Rc::new(std::cell::RefCell::new(RunnerInner::new())),
         }
+    }
+
+    fn lookup_test<S>(
+        &self,
+        suite: S,
+        name: S,
+    ) -> Result<(String, std::path::PathBuf), String> where
+        S: AsRef<str>,
+    {
+        let runner = self.inner.borrow();
+        let suite = suite.as_ref();
+        let name = name.as_ref();
+        let test_suite = if let Some(test_suite) = runner
+            .test_suites
+            .get(suite)
+        {
+            test_suite
+        } else {
+            return Err(
+                format!(
+                    "ERROR: No test suite '{}' found",
+                    suite
+                )
+            );
+        };
+        let test = if let Some(test) = test_suite
+            .tests
+            .get(name)
+        {
+            test
+        } else {
+            return Err(
+                format!(
+                    "ERROR: No test '{}' found in test suite '{}'",
+                    name,
+                    suite,
+                )
+            );
+        };
+        let file = test.file.clone();
+        let path = test.path.clone();
+        Ok((file, path))
+    }
+
+    pub fn run_test<S, E>(
+        &mut self,
+        test_suite_name: S,
+        test_name: S,
+        mut error_delegate: E
+    ) -> bool where
+        S: AsRef<str>,
+        E: FnMut(String) + Copy,
+    {
+        let (file, path) = match self.lookup_test(&test_suite_name, &test_name) {
+            Ok((file, path)) => (file, path),
+            Err(message) => {
+                error_delegate(message);
+                return false;
+            }
+        };
+        self.inner.borrow_mut().current_test_failed = false;
+        self.with_lua(|runner, lua| {
+            match runner.with_script(
+                lua,
+                error_delegate,
+                &file,
+                &path,
+                |runner, lua, tests_registry_key| {
+                    let tests_table: mlua::Table = lua.registry_value(&tests_registry_key)?;
+                    let tests: mlua::Table = tests_table.get(test_suite_name.as_ref())?;
+                    let test: mlua::Function = tests.get(test_name.as_ref())?;
+                    if let Err(error) = test.call::<_, ()>(()) {
+                        error_delegate(
+                            format!(
+                                "ERROR: {}",
+                                error
+                            )
+                        );
+                        runner.inner.borrow_mut().current_test_failed = true;
+                    }
+                    Ok(())
+                },
+            ) {
+                Ok(_) => (),
+                Err(message) => {
+                    runner.inner.borrow_mut().current_test_failed = true;
+                    error_delegate(
+                        format!(
+                            "ERROR: Unable to load Lua script file '{}': {}",
+                            path.display(),
+                            message
+                        )
+                    );
+                },
+            };
+        });
+        !self.inner.borrow().current_test_failed
     }
 
     fn with_lua<F>(
@@ -232,36 +621,51 @@ impl Runner {
             &mut mlua::Lua
         )
     {
-        let mut lua = mlua::Lua::new();
-        lua.globals().set(
-            "moonunit",
-            self.test_suites.clone()
-        ).unwrap();
-        f(self, &mut lua);
+        unsafe {
+            let mut lua = mlua::Lua::unsafe_new();
+            f(self, &mut lua)
+        }
     }
 
-    fn with_script<F>(
+    fn with_script<E, F>(
         &mut self,
         lua: &mut mlua::Lua,
+        mut error_delegate: E,
         script: &str,
         path: &std::path::Path,
         f: F,
     ) -> Result<(), String> where
+        E: FnMut(String),
         F: FnOnce(
             &mut Self,
-            &mut mlua::Lua
-        )
+            &mut mlua::Lua,
+            std::rc::Rc<mlua::RegistryKey>,
+        ) -> mlua::Result<()>,
     {
         let original_working_directory = std::env::current_dir().unwrap();
         std::env::set_current_dir(path.parent().unwrap()).unwrap();
         let name: String = "=".to_string() + &path.to_string_lossy().to_string();
         let result = (move || {
+            let tests_table = lua.create_table().unwrap();
+            let tests_registry_key = std::rc::Rc::new(lua.create_registry_value(tests_table).unwrap());
+            let errors = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+            lua
+                .globals()
+                .set(
+                    "moonunit",
+                    RunContext::new(&errors, script, path, self, &tests_registry_key)
+                )
+                .unwrap();
             lua
                 .load(script)
                 .set_name(name.as_bytes())
                 .and_then(mlua::Chunk::exec)
                 .map_err(|err| err.to_string())?;
-            f(self, lua);
+            f(self, lua, tests_registry_key)
+                .map_err(|err| err.to_string())?;
+            for message in errors.borrow_mut().iter() {
+                error_delegate(message.clone());
+            }
             Ok(())
         })();
         std::env::set_current_dir(original_working_directory).unwrap();
