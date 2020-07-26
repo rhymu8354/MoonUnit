@@ -175,405 +175,470 @@ struct RunContext {
 }
 
 impl mlua::UserData for RunContext {
-    #[allow(clippy::too_many_lines)]
     fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_method_mut(
-            "test",
-            |
-                lua,
-                this,
-                (suite, name, test): (String, String, mlua::Function)
-            | {
-                // Get line number information about the provided function.
-                let test_source = test.source();
-
-                // Make sure there is a table for this suite of tests.
-                let tests_table: mlua::Table = lua.registry_value(&this.tests_registry_key)?;
-                if !tests_table.contains_key(suite.clone())? {
-                    tests_table.set(suite.clone(), lua.create_table()?)?;
-                }
-
-                // Store the function in the tests table.
-                let tests: mlua::Table = tests_table.get(suite.clone())?;
-                tests.set(name.clone(), test)?;
-
-                // Add information about the test to the runner.
-                let test_suites = &mut this.runner.inner.borrow_mut().test_suites;
-                let suite = test_suites.entry(suite).or_default();
-                #[allow(clippy::cast_sign_loss)]
-                suite.tests.entry(name).or_insert_with(
-                    || Test{
-                        file: this.file.clone(),
-                        path: this.path.clone(),
-                        line_number: test_source.line_defined as usize,
-                    }
-                );
-                Ok(())
-            }
-        );
-
-        methods.add_method_mut(
-            "assert_eq",
-            |
-                _lua,
-                _this,
-                (lhs, rhs): (mlua::Value, mlua::Value)
-            | {
-                if let (mlua::Value::Table(lhs), mlua::Value::Table(rhs)) = (&lhs, &rhs) {
-                    let (message, key_chain) = RunContext::compare_lua_tables(lhs, rhs, Vec::new());
-                    if message.is_empty() {
-                        Ok(())
-                    } else {
-                        Err(mlua::Error::RuntimeError(
-                            format!(
-                                "Tables differ (path: {}) -- {}",
-                                key_chain
-                                    .into_iter()
-                                    .map(
-                                        |value| render(&value)
-                                    )
-                                    .fold(
-                                        String::new(),
-                                        |mut chain, key| {
-                                            if !chain.is_empty() {
-                                                chain.push('.');
-                                            }
-                                            chain += &key;
-                                            chain
-                                        }
-                                    ),
-                                message
-                            )
-                        ))
-                    }
-                } else if lhs == rhs {
-                    Ok(())
-                } else {
-                    Err(mlua::Error::RuntimeError(
-                        format!(
-                            "Expected {}, actual was {}",
-                            LuaValueForDisplay(&lhs),
-                            LuaValueForDisplay(&rhs),
-                        )
-                    ))
-                }
-            }
-        );
-
-        methods.add_method_mut(
-            "assert_ne",
-            |
-                _lua,
-                _this,
-                (lhs, rhs): (mlua::Value, mlua::Value)
-            | {
-                if let (mlua::Value::Table(lhs), mlua::Value::Table(rhs)) = (&lhs, &rhs) {
-                    let (message, _key_chain) = RunContext::compare_lua_tables(lhs, rhs, Vec::new());
-                    if message.is_empty() {
-                        Err(mlua::Error::RuntimeError(
-                            String::from("Tables should differ but are the same")
-                        ))
-                    } else {
-                        Ok(())
-                    }
-                } else if lhs == rhs {
-                    Err(mlua::Error::RuntimeError(
-                        format!(
-                            "Expected not {}, actual was {}",
-                            LuaValueForDisplay(&lhs),
-                            LuaValueForDisplay(&rhs),
-                        )
-                    ))
-                } else {
-                    Ok(())
-                }
-            }
-        );
-
-        methods.add_method_mut(
-            "assert_ge",
-            |
-                _lua,
-                _this,
-                (lhs, rhs): (mlua::Value, mlua::Value)
-            | {
-                if OrderedLuaValue(lhs.clone()).cmp(&OrderedLuaValue(rhs.clone())) == std::cmp::Ordering::Less {
-                    Err(mlua::Error::RuntimeError(
-                        format!(
-                            "Expected {} >= {}",
-                            LuaValueForDisplay(&lhs),
-                            LuaValueForDisplay(&rhs),
-                        )
-                    ))
-                } else {
-                    Ok(())
-                }
-            }
-        );
-
-        methods.add_method_mut(
-            "assert_gt",
-            |
-                _lua,
-                _this,
-                (lhs, rhs): (mlua::Value, mlua::Value)
-            | {
-                if OrderedLuaValue(lhs.clone()).cmp(&OrderedLuaValue(rhs.clone())) == std::cmp::Ordering::Greater {
-                    Ok(())
-                } else {
-                    Err(mlua::Error::RuntimeError(
-                        format!(
-                            "Expected {} > {}",
-                            LuaValueForDisplay(&lhs),
-                            LuaValueForDisplay(&rhs),
-                        )
-                    ))
-                }
-            }
-        );
-
-        methods.add_method_mut(
-            "assert_le",
-            |
-                _lua,
-                _this,
-                (lhs, rhs): (mlua::Value, mlua::Value)
-            | {
-                if OrderedLuaValue(lhs.clone()).cmp(&OrderedLuaValue(rhs.clone())) == std::cmp::Ordering::Greater {
-                    Err(mlua::Error::RuntimeError(
-                        format!(
-                            "Expected {} <= {}",
-                            LuaValueForDisplay(&lhs),
-                            LuaValueForDisplay(&rhs),
-                        )
-                    ))
-                } else {
-                    Ok(())
-                }
-            }
-        );
-
-        methods.add_method_mut(
-            "assert_lt",
-            |
-                _lua,
-                _this,
-                (lhs, rhs): (mlua::Value, mlua::Value)
-            | {
-                if OrderedLuaValue(lhs.clone()).cmp(&OrderedLuaValue(rhs.clone())) == std::cmp::Ordering::Less {
-                    Ok(())
-                } else {
-                    Err(mlua::Error::RuntimeError(
-                        format!(
-                            "Expected {} < {}",
-                            LuaValueForDisplay(&lhs),
-                            LuaValueForDisplay(&rhs),
-                        )
-                    ))
-                }
-            }
-        );
-
-        methods.add_method_mut(
-            "assert_true",
-            |
-                _lua,
-                _this,
-                (value,): (mlua::Value,)
-            | {
-                match &value {
-                    mlua::Value::Boolean(false) | mlua::Value::Nil => {
-                        Err(mlua::Error::RuntimeError(
-                            format!(
-                                "Expected {} to be true",
-                                LuaValueForDisplay(&value),
-                            )
-                        ))
-                    },
-                    _ => Ok(())
-                }
-            }
-        );
-
-        methods.add_method_mut(
-            "assert_false",
-            |
-                _lua,
-                _this,
-                (value,): (mlua::Value,)
-            | {
-                match &value {
-                    mlua::Value::Boolean(false) | mlua::Value::Nil => Ok(()),
-                    _ => {
-                        Err(mlua::Error::RuntimeError(
-                            format!(
-                                "Expected {} to be false",
-                                LuaValueForDisplay(&value),
-                            )
-                        ))
-                    },
-                }
-            }
-        );
-
-        methods.add_method_mut(
-            "expect_eq",
-            |
-                lua,
-                this,
-                (lhs, rhs): (mlua::Value, mlua::Value)
-            | {
-                let mut expectation_failed = false;
-                if let (mlua::Value::Table(lhs), mlua::Value::Table(rhs)) = (&lhs, &rhs) {
-                    let (message, key_chain) = RunContext::compare_lua_tables(lhs, rhs, Vec::new());
-                    if !message.is_empty() {
-                        expectation_failed = true;
-                        this.errors.borrow_mut().push(
-                            format!(
-                                "Tables differ (path: {}) -- {}",
-                                key_chain
-                                    .into_iter()
-                                    .map(
-                                        |value| render(&value)
-                                    )
-                                    .fold(
-                                        String::new(),
-                                        |mut chain, key| {
-                                            if !chain.is_empty() {
-                                                chain.push('.');
-                                            }
-                                            chain += &key;
-                                            chain
-                                        }
-                                    ),
-                                message
-                            )
-                        )
-                    }
-                } else if lhs != rhs {
-                    expectation_failed = true;
-                    this.errors.borrow_mut().push(
-                        format!(
-                            "Expected {}, actual was {}",
-                            LuaValueForDisplay(&lhs),
-                            LuaValueForDisplay(&rhs),
-                        )
-                    );
-                }
-                if expectation_failed {
-                    this.runner.inner.borrow_mut().current_test_failed = true;
-                    let traceback: String = lua
-                        .load("debug.traceback(nil, 3)")
-                        .eval()?;
-                    this.errors.borrow_mut().push(traceback);
-                }
-                Ok(())
-            }
-        );
-
-        methods.add_method_mut(
-            "expect_ne",
-            |
-                lua,
-                this,
-                (lhs, rhs): (mlua::Value, mlua::Value)
-            | {
-                let mut expectation_failed = false;
-                if let (mlua::Value::Table(lhs), mlua::Value::Table(rhs)) = (&lhs, &rhs) {
-                    let (message, _key_chain) = RunContext::compare_lua_tables(lhs, rhs, Vec::new());
-                    if message.is_empty() {
-                        expectation_failed = true;
-                        this.errors.borrow_mut().push(
-                            String::from("Tables should differ but are the same")
-                        )
-                    }
-                } else if lhs == rhs {
-                    expectation_failed = true;
-                    this.errors.borrow_mut().push(
-                        format!(
-                            "Expected not {}, actual was {}",
-                            LuaValueForDisplay(&lhs),
-                            LuaValueForDisplay(&rhs),
-                        )
-                    );
-                }
-                if expectation_failed {
-                    this.runner.inner.borrow_mut().current_test_failed = true;
-                    let traceback: String = lua
-                        .load("debug.traceback(nil, 3)")
-                        .eval()?;
-                    this.errors.borrow_mut().push(traceback);
-                }
-                Ok(())
-            }
-        );
-
-        methods.add_method_mut(
-            "expect_true",
-            |
-                lua,
-                this,
-                (value,): (mlua::Value,)
-            | {
-                let mut expectation_failed = false;
-                match &value {
-                    mlua::Value::Boolean(false) | mlua::Value::Nil => {
-                        expectation_failed = true;
-                        this.errors.borrow_mut().push(
-                            format!(
-                                "Expected {} to be true",
-                                LuaValueForDisplay(&value),
-                            )
-                        );
-                    },
-                    _ => (),
-                };
-                if expectation_failed {
-                    this.runner.inner.borrow_mut().current_test_failed = true;
-                    let traceback: String = lua
-                        .load("debug.traceback(nil, 3)")
-                        .eval()?;
-                    this.errors.borrow_mut().push(traceback);
-                }
-                Ok(())
-            }
-        );
-
-        methods.add_method_mut(
-            "expect_false",
-            |
-                lua,
-                this,
-                (value,): (mlua::Value,)
-            | {
-                let mut expectation_failed = false;
-                match &value {
-                    mlua::Value::Boolean(false) | mlua::Value::Nil => (),
-                    _ => {
-                        expectation_failed = true;
-                        this.errors.borrow_mut().push(
-                            format!(
-                                "Expected {} to be false",
-                                LuaValueForDisplay(&value),
-                            )
-                        );
-                    },
-                };
-                if expectation_failed {
-                    this.runner.inner.borrow_mut().current_test_failed = true;
-                    let traceback: String = lua
-                        .load("debug.traceback(nil, 3)")
-                        .eval()?;
-                    this.errors.borrow_mut().push(traceback);
-                }
-                Ok(())
-            }
-        );
+        methods.add_method_mut("test", moonunit_test);
+        methods.add_method_mut("assert_eq", moonunit_assert_eq);
+        methods.add_method_mut("assert_ne", moonunit_assert_ne);
+        methods.add_method_mut("assert_ge", moonunit_assert_ge);
+        methods.add_method_mut("assert_gt", moonunit_assert_gt);
+        methods.add_method_mut("assert_le", moonunit_assert_le);
+        methods.add_method_mut("assert_lt", moonunit_assert_lt);
+        methods.add_method_mut("assert_true", moonunit_assert_true);
+        methods.add_method_mut("assert_false", moonunit_assert_false);
+        methods.add_method_mut("expect_eq", moonunit_expect_eq);
+        methods.add_method_mut("expect_ne", moonunit_expect_ne);
+        methods.add_method_mut("expect_ge", moonunit_expect_ge);
+        methods.add_method_mut("expect_gt", moonunit_expect_gt);
+        methods.add_method_mut("expect_le", moonunit_expect_le);
+        methods.add_method_mut("expect_lt", moonunit_expect_lt);
+        methods.add_method_mut("expect_true", moonunit_expect_true);
+        methods.add_method_mut("expect_false", moonunit_expect_false);
     }
 }
 
+fn moonunit_test<'lua, 'runner>(
+    lua: &'lua mlua::Lua,
+    this: &'runner mut RunContext,
+    (suite, name, test): (String, String, mlua::Function)
+) -> mlua::Result<()> {
+    // Get line number information about the provided function.
+    let test_source = test.source();
+
+    // Make sure there is a table for this suite of tests.
+    let tests_table: mlua::Table = lua.registry_value(&this.tests_registry_key)?;
+    if !tests_table.contains_key(suite.clone())? {
+        tests_table.set(suite.clone(), lua.create_table()?)?;
+    }
+
+    // Store the function in the tests table.
+    let tests: mlua::Table = tests_table.get(suite.clone())?;
+    tests.set(name.clone(), test)?;
+
+    // Add information about the test to the runner.
+    let test_suites = &mut this.runner.inner.borrow_mut().test_suites;
+    let suite = test_suites.entry(suite).or_default();
+    #[allow(clippy::cast_sign_loss)]
+    suite.tests.entry(name).or_insert_with(
+        || Test{
+            file: this.file.clone(),
+            path: this.path.clone(),
+            line_number: test_source.line_defined as usize,
+        }
+    );
+    Ok(())
+}
+
+fn moonunit_assert_eq<'lua, 'runner>(
+    _lua: &'lua mlua::Lua,
+    _this: &'runner mut RunContext,
+    (lhs, rhs): (mlua::Value, mlua::Value)
+) -> mlua::Result<()> {
+    if let (mlua::Value::Table(lhs), mlua::Value::Table(rhs)) = (&lhs, &rhs) {
+        let (message, key_chain) = RunContext::compare_lua_tables(lhs, rhs, Vec::new());
+        if message.is_empty() {
+            Ok(())
+        } else {
+            Err(mlua::Error::RuntimeError(
+                format!(
+                    "Tables differ (path: {}) -- {}",
+                    key_chain
+                        .into_iter()
+                        .map(
+                            |value| render(&value)
+                        )
+                        .fold(
+                            String::new(),
+                            |mut chain, key| {
+                                if !chain.is_empty() {
+                                    chain.push('.');
+                                }
+                                chain += &key;
+                                chain
+                            }
+                        ),
+                    message
+                )
+            ))
+        }
+    } else if lhs == rhs {
+        Ok(())
+    } else {
+        Err(mlua::Error::RuntimeError(
+            format!(
+                "Expected {}, actual was {}",
+                LuaValueForDisplay(&lhs),
+                LuaValueForDisplay(&rhs),
+            )
+        ))
+    }
+}
+
+fn moonunit_assert_ne<'lua, 'runner>(
+    _lua: &'lua mlua::Lua,
+    _this: &'runner mut RunContext,
+    (lhs, rhs): (mlua::Value, mlua::Value)
+) -> mlua::Result<()> {
+    if let (mlua::Value::Table(lhs), mlua::Value::Table(rhs)) = (&lhs, &rhs) {
+        let (message, _key_chain) = RunContext::compare_lua_tables(lhs, rhs, Vec::new());
+        if message.is_empty() {
+            Err(mlua::Error::RuntimeError(
+                String::from("Tables should differ but are the same")
+            ))
+        } else {
+            Ok(())
+        }
+    } else if lhs == rhs {
+        Err(mlua::Error::RuntimeError(
+            format!(
+                "Expected not {}, actual was {}",
+                LuaValueForDisplay(&lhs),
+                LuaValueForDisplay(&rhs),
+            )
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn moonunit_assert_ge<'lua, 'runner>(
+    _lua: &'lua mlua::Lua,
+    _this: &'runner mut RunContext,
+    (lhs, rhs): (mlua::Value, mlua::Value)
+) -> mlua::Result<()> {
+    if OrderedLuaValue(lhs.clone()).cmp(&OrderedLuaValue(rhs.clone())) == std::cmp::Ordering::Less {
+        Err(mlua::Error::RuntimeError(
+            format!(
+                "Expected {} >= {}",
+                LuaValueForDisplay(&lhs),
+                LuaValueForDisplay(&rhs),
+            )
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn moonunit_assert_gt<'lua, 'runner>(
+    _lua: &'lua mlua::Lua,
+    _this: &'runner mut RunContext,
+    (lhs, rhs): (mlua::Value, mlua::Value)
+) -> mlua::Result<()> {
+    if OrderedLuaValue(lhs.clone()).cmp(&OrderedLuaValue(rhs.clone())) == std::cmp::Ordering::Greater {
+        Ok(())
+    } else {
+        Err(mlua::Error::RuntimeError(
+            format!(
+                "Expected {} > {}",
+                LuaValueForDisplay(&lhs),
+                LuaValueForDisplay(&rhs),
+            )
+        ))
+    }
+}
+
+fn moonunit_assert_le<'lua, 'runner>(
+    _lua: &'lua mlua::Lua,
+    _this: &'runner mut RunContext,
+    (lhs, rhs): (mlua::Value, mlua::Value)
+) -> mlua::Result<()> {
+    if OrderedLuaValue(lhs.clone()).cmp(&OrderedLuaValue(rhs.clone())) == std::cmp::Ordering::Greater {
+        Err(mlua::Error::RuntimeError(
+            format!(
+                "Expected {} <= {}",
+                LuaValueForDisplay(&lhs),
+                LuaValueForDisplay(&rhs),
+            )
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn moonunit_assert_lt<'lua, 'runner>(
+    _lua: &'lua mlua::Lua,
+    _this: &'runner mut RunContext,
+    (lhs, rhs): (mlua::Value, mlua::Value)
+) -> mlua::Result<()> {
+    if OrderedLuaValue(lhs.clone()).cmp(&OrderedLuaValue(rhs.clone())) == std::cmp::Ordering::Less {
+        Ok(())
+    } else {
+        Err(mlua::Error::RuntimeError(
+            format!(
+                "Expected {} < {}",
+                LuaValueForDisplay(&lhs),
+                LuaValueForDisplay(&rhs),
+            )
+        ))
+    }
+}
+
+fn moonunit_assert_true<'lua, 'runner>(
+    _lua: &'lua mlua::Lua,
+    _this: &'runner mut RunContext,
+    (value,): (mlua::Value,)
+) -> mlua::Result<()> {
+    match &value {
+        mlua::Value::Boolean(false) | mlua::Value::Nil => {
+            Err(mlua::Error::RuntimeError(
+                format!(
+                    "Expected {} to be true",
+                    LuaValueForDisplay(&value),
+                )
+            ))
+        },
+        _ => Ok(())
+    }
+}
+
+fn moonunit_assert_false<'lua, 'runner>(
+    _lua: &'lua mlua::Lua,
+    _this: &'runner mut RunContext,
+    (value,): (mlua::Value,)
+) -> mlua::Result<()> {
+    match &value {
+        mlua::Value::Boolean(false) | mlua::Value::Nil => Ok(()),
+        _ => {
+            Err(mlua::Error::RuntimeError(
+                format!(
+                    "Expected {} to be false",
+                    LuaValueForDisplay(&value),
+                )
+            ))
+        },
+    }
+}
+
+fn moonunit_expect_eq<'lua, 'runner>(
+    lua: &'lua mlua::Lua,
+    this: &'runner mut RunContext,
+    (lhs, rhs): (mlua::Value, mlua::Value)
+) -> mlua::Result<()> {
+    let mut expectation_failed = false;
+    if let (mlua::Value::Table(lhs), mlua::Value::Table(rhs)) = (&lhs, &rhs) {
+        let (message, key_chain) = RunContext::compare_lua_tables(lhs, rhs, Vec::new());
+        if !message.is_empty() {
+            expectation_failed = true;
+            this.errors.borrow_mut().push(
+                format!(
+                    "Tables differ (path: {}) -- {}",
+                    key_chain
+                        .into_iter()
+                        .map(
+                            |value| render(&value)
+                        )
+                        .fold(
+                            String::new(),
+                            |mut chain, key| {
+                                if !chain.is_empty() {
+                                    chain.push('.');
+                                }
+                                chain += &key;
+                                chain
+                            }
+                        ),
+                    message
+                )
+            )
+        }
+    } else if lhs != rhs {
+        expectation_failed = true;
+        this.errors.borrow_mut().push(
+            format!(
+                "Expected {}, actual was {}",
+                LuaValueForDisplay(&lhs),
+                LuaValueForDisplay(&rhs),
+            )
+        );
+    }
+    if expectation_failed {
+        this.runner.inner.borrow_mut().current_test_failed = true;
+        let traceback: String = lua
+            .load("debug.traceback(nil, 3)")
+            .eval()?;
+        this.errors.borrow_mut().push(traceback);
+    }
+    Ok(())
+}
+
+fn moonunit_expect_ne<'lua, 'runner>(
+    lua: &'lua mlua::Lua,
+    this: &'runner mut RunContext,
+    (lhs, rhs): (mlua::Value, mlua::Value)
+) -> mlua::Result<()> {
+    let mut expectation_failed = false;
+    if let (mlua::Value::Table(lhs), mlua::Value::Table(rhs)) = (&lhs, &rhs) {
+        let (message, _key_chain) = RunContext::compare_lua_tables(lhs, rhs, Vec::new());
+        if message.is_empty() {
+            expectation_failed = true;
+            this.errors.borrow_mut().push(
+                String::from("Tables should differ but are the same")
+            )
+        }
+    } else if lhs == rhs {
+        expectation_failed = true;
+        this.errors.borrow_mut().push(
+            format!(
+                "Expected not {}, actual was {}",
+                LuaValueForDisplay(&lhs),
+                LuaValueForDisplay(&rhs),
+            )
+        );
+    }
+    if expectation_failed {
+        this.runner.inner.borrow_mut().current_test_failed = true;
+        let traceback: String = lua
+            .load("debug.traceback(nil, 3)")
+            .eval()?;
+        this.errors.borrow_mut().push(traceback);
+    }
+    Ok(())
+}
+
+fn moonunit_expect_ge<'lua, 'runner>(
+    lua: &'lua mlua::Lua,
+    this: &'runner mut RunContext,
+    (lhs, rhs): (mlua::Value, mlua::Value)
+) -> mlua::Result<()> {
+    if OrderedLuaValue(lhs.clone()).cmp(&OrderedLuaValue(rhs.clone())) == std::cmp::Ordering::Less {
+        this.errors.borrow_mut().push(
+            format!(
+                "Expected {} >= {}",
+                LuaValueForDisplay(&lhs),
+                LuaValueForDisplay(&rhs),
+            )
+        );
+        this.runner.inner.borrow_mut().current_test_failed = true;
+        let traceback: String = lua
+            .load("debug.traceback(nil, 3)")
+            .eval()?;
+        this.errors.borrow_mut().push(traceback);
+    }
+    Ok(())
+}
+
+fn moonunit_expect_gt<'lua, 'runner>(
+    lua: &'lua mlua::Lua,
+    this: &'runner mut RunContext,
+    (lhs, rhs): (mlua::Value, mlua::Value)
+) -> mlua::Result<()> {
+    if OrderedLuaValue(lhs.clone()).cmp(&OrderedLuaValue(rhs.clone())) != std::cmp::Ordering::Greater {
+        this.errors.borrow_mut().push(
+            format!(
+                "Expected {} > {}",
+                LuaValueForDisplay(&lhs),
+                LuaValueForDisplay(&rhs),
+            )
+        );
+        this.runner.inner.borrow_mut().current_test_failed = true;
+        let traceback: String = lua
+            .load("debug.traceback(nil, 3)")
+            .eval()?;
+        this.errors.borrow_mut().push(traceback);
+    }
+    Ok(())
+}
+
+fn moonunit_expect_le<'lua, 'runner>(
+    lua: &'lua mlua::Lua,
+    this: &'runner mut RunContext,
+    (lhs, rhs): (mlua::Value, mlua::Value)
+) -> mlua::Result<()> {
+    if OrderedLuaValue(lhs.clone()).cmp(&OrderedLuaValue(rhs.clone())) == std::cmp::Ordering::Greater {
+        this.errors.borrow_mut().push(
+            format!(
+                "Expected {} <= {}",
+                LuaValueForDisplay(&lhs),
+                LuaValueForDisplay(&rhs),
+            )
+        );
+        this.runner.inner.borrow_mut().current_test_failed = true;
+        let traceback: String = lua
+            .load("debug.traceback(nil, 3)")
+            .eval()?;
+        this.errors.borrow_mut().push(traceback);
+    }
+    Ok(())
+}
+
+fn moonunit_expect_lt<'lua, 'runner>(
+    lua: &'lua mlua::Lua,
+    this: &'runner mut RunContext,
+    (lhs, rhs): (mlua::Value, mlua::Value)
+) -> mlua::Result<()> {
+    if OrderedLuaValue(lhs.clone()).cmp(&OrderedLuaValue(rhs.clone())) != std::cmp::Ordering::Less {
+        this.errors.borrow_mut().push(
+            format!(
+                "Expected {} < {}",
+                LuaValueForDisplay(&lhs),
+                LuaValueForDisplay(&rhs),
+            )
+        );
+        this.runner.inner.borrow_mut().current_test_failed = true;
+        let traceback: String = lua
+            .load("debug.traceback(nil, 3)")
+            .eval()?;
+        this.errors.borrow_mut().push(traceback);
+    }
+    Ok(())
+}
+
+fn moonunit_expect_true<'lua, 'runner>(
+    lua: &'lua mlua::Lua,
+    this: &'runner mut RunContext,
+    (value,): (mlua::Value,)
+) -> mlua::Result<()> {
+    let mut expectation_failed = false;
+    match &value {
+        mlua::Value::Boolean(false) | mlua::Value::Nil => {
+            expectation_failed = true;
+            this.errors.borrow_mut().push(
+                format!(
+                    "Expected {} to be true",
+                    LuaValueForDisplay(&value),
+                )
+            );
+        },
+        _ => (),
+    };
+    if expectation_failed {
+        this.runner.inner.borrow_mut().current_test_failed = true;
+        let traceback: String = lua
+            .load("debug.traceback(nil, 3)")
+            .eval()?;
+        this.errors.borrow_mut().push(traceback);
+    }
+    Ok(())
+}
+
+fn moonunit_expect_false<'lua, 'runner>(
+    lua: &'lua mlua::Lua,
+    this: &'runner mut RunContext,
+    (value,): (mlua::Value,)
+) -> mlua::Result<()> {
+    let mut expectation_failed = false;
+    match &value {
+        mlua::Value::Boolean(false) | mlua::Value::Nil => (),
+        _ => {
+            expectation_failed = true;
+            this.errors.borrow_mut().push(
+                format!(
+                    "Expected {} to be false",
+                    LuaValueForDisplay(&value),
+                )
+            );
+        },
+    };
+    if expectation_failed {
+        this.runner.inner.borrow_mut().current_test_failed = true;
+        let traceback: String = lua
+            .load("debug.traceback(nil, 3)")
+            .eval()?;
+        this.errors.borrow_mut().push(traceback);
+    }
+    Ok(())
+}
+
 impl RunContext {
-    #[allow(dead_code)]
     fn compare_lua_tables<'lua>(
         lhs: &mlua::Table<'lua>,
         rhs: &mlua::Table<'lua>,
