@@ -5,6 +5,33 @@ mod runner;
 use structopt::StructOpt;
 use std::io::Write;
 
+#[allow(clippy::doc_markdown)]
+#[structopt(verbatim_doc_comment)]
+/// NOTE: The block below is required to fool 'C++ TestMate' -- DO NOT TOUCH
+/// ----------------------------------------------------------------
+/// This program contains tests written using Google Test.
+///   --gtest_list_tests
+///       List the names of all tests instead of running them
+/// ----------------------------------------------------------------
+///
+/// Well, not really, but we had to say that in order for
+/// the 'C++ TestMate' plugin for VSCode to *think* so, in order
+/// for it to support this test runner.
+///
+/// What this program *actually* contains is a Lua interpreter and code which
+/// discovers and executes unit tests written in Lua.  Place a '.moonunit' file
+/// in the root folder of your project, and in that file list paths from there
+/// to individual Lua test files to run, or paths to directories containing
+/// other '.moonunit' files and/or Lua test files, and MoonUnit will discover
+/// all your tests and run them for you, provided you either set the working
+/// directory somewhere inside your project, or specify the project's folder using
+/// the --path command-line argument.  Neat, huh?
+///
+/// What's really cool is MoonUnit makes its output look like Google Test,
+/// and supports the minimum command-line arguments required by
+/// the 'C++ TestMate' plugin for VSCode,
+/// so that it should seamlessly integrate into a VSCode 'solution' along with
+/// other test runners.
 #[derive(Clone, Debug, StructOpt)]
 struct Opts {
     /// The relative or absolute path to a folder which contains
@@ -31,6 +58,12 @@ struct Opts {
     /// Unless this is specified, no report will be generated.
     #[structopt(long = "gtest_output")]
     gtest_output: Option<String>,
+
+    #[structopt(long = "gtest_color")]
+    gtest_color: Option<String>,
+
+    #[structopt(long = "gtest_also_run_disabled_tests")]
+    gtest_also_run_disabled_tests: bool,
 }
 
 #[allow(clippy::too_many_lines)]
