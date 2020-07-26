@@ -66,39 +66,16 @@ struct Opts {
     gtest_also_run_disabled_tests: bool,
 }
 
-#[allow(clippy::too_many_lines)]
-fn app() -> i32 {
-    // Parse all command-line options.
-    let opts: Opts = Opts::from_args();
+type SelectedTests = std::collections::HashMap<String, std::collections::HashSet<String>>;
 
-    // Locate the highest-level ancestor folder of the current working
-    // folder that contains a ".moonunit" file, and configure the runner
-    // using it (and any other ".moonunit" files found indirectly).
-    let mut runner = runner::Runner::new();
-    for path in opts.path.canonicalize().unwrap()
-        .ancestors()
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-    {
-        let mut possible_configuration_file = path.to_path_buf();
-        possible_configuration_file.push(".moonunit");
-        if possible_configuration_file.is_file() {
-            runner.configure(
-                &possible_configuration_file,
-                |message| {
-                    eprintln!("{}", message);
-                }
-            )
-        }
-    }
-
-    // List or run all unit tests.
-    let mut success = true;
+fn select_tests(
+    opts: &Opts,
+    runner: &runner::Runner,
+) -> (SelectedTests, usize, usize) {
     let mut selected_tests = std::collections::HashMap::new();
     let mut total_tests = 0;
     let mut total_test_suites = 0;
-    match opts.gtest_filter {
+    match &opts.gtest_filter {
         None => {
             for test_suite_name in runner.get_test_suite_names() {
                 total_test_suites += 1;
@@ -123,16 +100,15 @@ fn app() -> i32 {
             }
         },
     };
-    if !opts.gtest_list_tests {
-        println!(
-            "[==========] Running {} test{} from {} test suite{}.",
-            total_tests,
-            if total_tests == 1 { "" } else { "s" },
-            total_test_suites,
-            if total_test_suites == 1 { "" } else { "s" }
-        );
-        println!("[----------] Global test environment set-up.");
-    }
+    (selected_tests, total_tests, total_test_suites)
+}
+
+fn run_tests(
+    opts: &Opts,
+    runner: &mut runner::Runner,
+    selected_tests: &SelectedTests,
+) -> (bool, usize, Vec<String>, u128) {
+    let mut success = true;
     let mut passed = 0;
     let mut failed = Vec::new();
     let runner_start_time = std::time::Instant::now();
@@ -216,6 +192,50 @@ fn app() -> i32 {
         }
     }
     let runner_elapsed_time = runner_start_time.elapsed().as_millis();
+    (success, passed, failed, runner_elapsed_time)
+}
+
+fn app() -> i32 {
+    // Parse all command-line options.
+    let opts: Opts = Opts::from_args();
+
+    // Locate the highest-level ancestor folder of the current working
+    // folder that contains a ".moonunit" file, and configure the runner
+    // using it (and any other ".moonunit" files found indirectly).
+    let mut runner = runner::Runner::new();
+    for path in opts.path.canonicalize().unwrap()
+        .ancestors()
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+    {
+        let mut possible_configuration_file = path.to_path_buf();
+        possible_configuration_file.push(".moonunit");
+        if possible_configuration_file.is_file() {
+            runner.configure(
+                &possible_configuration_file,
+                |message| {
+                    eprintln!("{}", message);
+                }
+            )
+        }
+    }
+
+    // Select which tests to run.
+    let (selected_tests, total_tests, total_test_suites) = select_tests(&opts, &runner);
+
+    // List or run all unit tests.
+    if !opts.gtest_list_tests {
+        println!(
+            "[==========] Running {} test{} from {} test suite{}.",
+            total_tests,
+            if total_tests == 1 { "" } else { "s" },
+            total_test_suites,
+            if total_test_suites == 1 { "" } else { "s" }
+        );
+        println!("[----------] Global test environment set-up.");
+    }
+    let (success, passed, failed, runner_elapsed_time) = run_tests(&opts, &mut runner, &selected_tests);
     if !opts.gtest_list_tests {
         println!("[----------] Global test environment tear-down");
         println!(
