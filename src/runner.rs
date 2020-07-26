@@ -1,4 +1,5 @@
 use std::io::Read;
+use std::fmt::Write;
 
 trait FixPathNonsense {
     fn fix_silly_path_delimiter_nonsense(&self) -> std::borrow::Cow<str>;
@@ -174,6 +175,7 @@ struct RunContext {
 }
 
 impl mlua::UserData for RunContext {
+    #[allow(clippy::too_many_lines)]
     fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
         methods.add_method_mut(
             "test",
@@ -207,6 +209,210 @@ impl mlua::UserData for RunContext {
                     }
                 );
                 Ok(())
+            }
+        );
+
+        methods.add_method_mut(
+            "assert_eq",
+            |
+                _lua,
+                _this,
+                (lhs, rhs): (mlua::Value, mlua::Value)
+            | {
+                if let (mlua::Value::Table(lhs), mlua::Value::Table(rhs)) = (&lhs, &rhs) {
+                    let (message, key_chain) = RunContext::compare_lua_tables(lhs, rhs, Vec::new());
+                    if message.is_empty() {
+                        Ok(())
+                    } else {
+                        Err(mlua::Error::RuntimeError(
+                            format!(
+                                "Tables differ (path: {}) -- {}",
+                                key_chain
+                                    .into_iter()
+                                    .map(
+                                        |value| render(&value)
+                                    )
+                                    .fold(
+                                        String::new(),
+                                        |mut chain, key| {
+                                            if !chain.is_empty() {
+                                                chain.push('.');
+                                            }
+                                            chain += &key;
+                                            chain
+                                        }
+                                    ),
+                                message
+                            )
+                        ))
+                    }
+                } else if lhs == rhs {
+                    Ok(())
+                } else {
+                    Err(mlua::Error::RuntimeError(
+                        format!(
+                            "Expected {}, actual was {}",
+                            LuaValueForDisplay(&lhs),
+                            LuaValueForDisplay(&rhs),
+                        )
+                    ))
+                }
+            }
+        );
+
+        methods.add_method_mut(
+            "assert_ne",
+            |
+                _lua,
+                _this,
+                (lhs, rhs): (mlua::Value, mlua::Value)
+            | {
+                if let (mlua::Value::Table(lhs), mlua::Value::Table(rhs)) = (&lhs, &rhs) {
+                    let (message, _key_chain) = RunContext::compare_lua_tables(lhs, rhs, Vec::new());
+                    if message.is_empty() {
+                        Err(mlua::Error::RuntimeError(
+                            String::from("Tables should differ but are the same")
+                        ))
+                    } else {
+                        Ok(())
+                    }
+                } else if lhs == rhs {
+                    Err(mlua::Error::RuntimeError(
+                        format!(
+                            "Expected not {}, actual was {}",
+                            LuaValueForDisplay(&lhs),
+                            LuaValueForDisplay(&rhs),
+                        )
+                    ))
+                } else {
+                    Ok(())
+                }
+            }
+        );
+
+        methods.add_method_mut(
+            "assert_ge",
+            |
+                _lua,
+                _this,
+                (lhs, rhs): (mlua::Value, mlua::Value)
+            | {
+                if OrderedLuaValue(lhs.clone()).cmp(&OrderedLuaValue(rhs.clone())) == std::cmp::Ordering::Less {
+                    Err(mlua::Error::RuntimeError(
+                        format!(
+                            "Expected {} >= {}",
+                            LuaValueForDisplay(&lhs),
+                            LuaValueForDisplay(&rhs),
+                        )
+                    ))
+                } else {
+                    Ok(())
+                }
+            }
+        );
+
+        methods.add_method_mut(
+            "assert_gt",
+            |
+                _lua,
+                _this,
+                (lhs, rhs): (mlua::Value, mlua::Value)
+            | {
+                if OrderedLuaValue(lhs.clone()).cmp(&OrderedLuaValue(rhs.clone())) == std::cmp::Ordering::Greater {
+                    Ok(())
+                } else {
+                    Err(mlua::Error::RuntimeError(
+                        format!(
+                            "Expected {} > {}",
+                            LuaValueForDisplay(&lhs),
+                            LuaValueForDisplay(&rhs),
+                        )
+                    ))
+                }
+            }
+        );
+
+        methods.add_method_mut(
+            "assert_le",
+            |
+                _lua,
+                _this,
+                (lhs, rhs): (mlua::Value, mlua::Value)
+            | {
+                if OrderedLuaValue(lhs.clone()).cmp(&OrderedLuaValue(rhs.clone())) == std::cmp::Ordering::Greater {
+                    Err(mlua::Error::RuntimeError(
+                        format!(
+                            "Expected {} <= {}",
+                            LuaValueForDisplay(&lhs),
+                            LuaValueForDisplay(&rhs),
+                        )
+                    ))
+                } else {
+                    Ok(())
+                }
+            }
+        );
+
+        methods.add_method_mut(
+            "assert_lt",
+            |
+                _lua,
+                _this,
+                (lhs, rhs): (mlua::Value, mlua::Value)
+            | {
+                if OrderedLuaValue(lhs.clone()).cmp(&OrderedLuaValue(rhs.clone())) == std::cmp::Ordering::Less {
+                    Ok(())
+                } else {
+                    Err(mlua::Error::RuntimeError(
+                        format!(
+                            "Expected {} < {}",
+                            LuaValueForDisplay(&lhs),
+                            LuaValueForDisplay(&rhs),
+                        )
+                    ))
+                }
+            }
+        );
+
+        methods.add_method_mut(
+            "assert_true",
+            |
+                _lua,
+                _this,
+                (value,): (mlua::Value,)
+            | {
+                match &value {
+                    mlua::Value::Boolean(false) | mlua::Value::Nil => {
+                        Err(mlua::Error::RuntimeError(
+                            format!(
+                                "Expected {} to be true",
+                                LuaValueForDisplay(&value),
+                            )
+                        ))
+                    },
+                    _ => Ok(())
+                }
+            }
+        );
+
+        methods.add_method_mut(
+            "assert_false",
+            |
+                _lua,
+                _this,
+                (value,): (mlua::Value,)
+            | {
+                match &value {
+                    mlua::Value::Boolean(false) | mlua::Value::Nil => Ok(()),
+                    _ => {
+                        Err(mlua::Error::RuntimeError(
+                            format!(
+                                "Expected {} to be false",
+                                LuaValueForDisplay(&value),
+                            )
+                        ))
+                    },
+                }
             }
         );
 
@@ -254,6 +460,105 @@ impl mlua::UserData for RunContext {
                         )
                     );
                 }
+                if expectation_failed {
+                    this.runner.inner.borrow_mut().current_test_failed = true;
+                    let traceback: String = lua
+                        .load("debug.traceback(nil, 3)")
+                        .eval()?;
+                    this.errors.borrow_mut().push(traceback);
+                }
+                Ok(())
+            }
+        );
+
+        methods.add_method_mut(
+            "expect_ne",
+            |
+                lua,
+                this,
+                (lhs, rhs): (mlua::Value, mlua::Value)
+            | {
+                let mut expectation_failed = false;
+                if let (mlua::Value::Table(lhs), mlua::Value::Table(rhs)) = (&lhs, &rhs) {
+                    let (message, _key_chain) = RunContext::compare_lua_tables(lhs, rhs, Vec::new());
+                    if message.is_empty() {
+                        expectation_failed = true;
+                        this.errors.borrow_mut().push(
+                            String::from("Tables should differ but are the same")
+                        )
+                    }
+                } else if lhs == rhs {
+                    expectation_failed = true;
+                    this.errors.borrow_mut().push(
+                        format!(
+                            "Expected not {}, actual was {}",
+                            LuaValueForDisplay(&lhs),
+                            LuaValueForDisplay(&rhs),
+                        )
+                    );
+                }
+                if expectation_failed {
+                    this.runner.inner.borrow_mut().current_test_failed = true;
+                    let traceback: String = lua
+                        .load("debug.traceback(nil, 3)")
+                        .eval()?;
+                    this.errors.borrow_mut().push(traceback);
+                }
+                Ok(())
+            }
+        );
+
+        methods.add_method_mut(
+            "expect_true",
+            |
+                lua,
+                this,
+                (value,): (mlua::Value,)
+            | {
+                let mut expectation_failed = false;
+                match &value {
+                    mlua::Value::Boolean(false) | mlua::Value::Nil => {
+                        expectation_failed = true;
+                        this.errors.borrow_mut().push(
+                            format!(
+                                "Expected {} to be true",
+                                LuaValueForDisplay(&value),
+                            )
+                        );
+                    },
+                    _ => (),
+                };
+                if expectation_failed {
+                    this.runner.inner.borrow_mut().current_test_failed = true;
+                    let traceback: String = lua
+                        .load("debug.traceback(nil, 3)")
+                        .eval()?;
+                    this.errors.borrow_mut().push(traceback);
+                }
+                Ok(())
+            }
+        );
+
+        methods.add_method_mut(
+            "expect_false",
+            |
+                lua,
+                this,
+                (value,): (mlua::Value,)
+            | {
+                let mut expectation_failed = false;
+                match &value {
+                    mlua::Value::Boolean(false) | mlua::Value::Nil => (),
+                    _ => {
+                        expectation_failed = true;
+                        this.errors.borrow_mut().push(
+                            format!(
+                                "Expected {} to be false",
+                                LuaValueForDisplay(&value),
+                            )
+                        );
+                    },
+                };
                 if expectation_failed {
                     this.runner.inner.borrow_mut().current_test_failed = true;
                     let traceback: String = lua
@@ -330,7 +635,7 @@ impl RunContext {
         } else {
             (
                 format!(
-                    "Actual value has extra key '{}'",
+                    "Actual value has extra key {}",
                     LuaValueForDisplay(&rhs_keys.into_iter().next().unwrap().0)
                 ),
                 key_chain
@@ -420,7 +725,33 @@ impl Runner {
     }
 
     pub fn get_report(&self) -> String {
-        String::from("Hello, World!")
+        let mut num_tests = 0;
+        for test_suite in self.inner.borrow().test_suites.values() {
+            num_tests += test_suite.tests.len();
+        }
+        let mut buffer = String::new();
+        writeln!(&mut buffer, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>").unwrap();
+        writeln!(&mut buffer, "<testsuites tests=\"{}\" name=\"AllTests\">", num_tests).unwrap();
+        for (test_suite_name, test_suite) in &self.inner.borrow().test_suites {
+            writeln!(
+                &mut buffer,
+                "  <testsuite name=\"{}\" tests=\"{}\">",
+                test_suite_name,
+                test_suite.tests.len()
+            ).unwrap();
+            for (test_name, test) in &test_suite.tests {
+                writeln!(
+                    &mut buffer,
+                    "    <testcase name=\"{}\" file=\"{}\" line=\"{}\" />",
+                    test_name,
+                    test.path.display(),
+                    test.line_number,
+                ).unwrap();
+            }
+            writeln!(&mut buffer, "</testsuite>").unwrap();
+        }
+        writeln!(&mut buffer, "</testsuites>").unwrap();
+        buffer
     }
 
     pub fn get_test_names<S>(
@@ -585,12 +916,22 @@ impl Runner {
                     let tests: mlua::Table = tests_table.get(test_suite_name.as_ref())?;
                     let test: mlua::Function = tests.get(test_name.as_ref())?;
                     if let Err(error) = test.call::<_, ()>(()) {
-                        error_delegate(
-                            format!(
-                                "ERROR: {}",
-                                error
-                            )
-                        );
+                        if let mlua::Error::CallbackError{traceback, cause} = error {
+                            error_delegate(
+                                format!(
+                                    "ERROR: {}",
+                                    cause
+                                )
+                            );
+                            error_delegate(traceback);
+                        } else {
+                            error_delegate(
+                                format!(
+                                    "ERROR: {}",
+                                    error
+                                )
+                            );
+                        }
                         runner.inner.borrow_mut().current_test_failed = true;
                     }
                     Ok(())
