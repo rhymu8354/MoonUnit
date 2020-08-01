@@ -176,29 +176,29 @@ struct RunContext {
 
 impl mlua::UserData for RunContext {
     fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_method_mut("test", moonunit_test);
-        methods.add_method_mut("assert_eq", moonunit_assert_eq);
-        methods.add_method_mut("assert_ne", moonunit_assert_ne);
-        methods.add_method_mut("assert_ge", moonunit_assert_ge);
-        methods.add_method_mut("assert_gt", moonunit_assert_gt);
-        methods.add_method_mut("assert_le", moonunit_assert_le);
-        methods.add_method_mut("assert_lt", moonunit_assert_lt);
-        methods.add_method_mut("assert_true", moonunit_assert_true);
-        methods.add_method_mut("assert_false", moonunit_assert_false);
-        methods.add_method_mut("expect_eq", moonunit_expect_eq);
-        methods.add_method_mut("expect_ne", moonunit_expect_ne);
-        methods.add_method_mut("expect_ge", moonunit_expect_ge);
-        methods.add_method_mut("expect_gt", moonunit_expect_gt);
-        methods.add_method_mut("expect_le", moonunit_expect_le);
-        methods.add_method_mut("expect_lt", moonunit_expect_lt);
-        methods.add_method_mut("expect_true", moonunit_expect_true);
-        methods.add_method_mut("expect_false", moonunit_expect_false);
+        methods.add_method("test", moonunit_test);
+        methods.add_method("assert_eq", moonunit_assert_eq);
+        methods.add_method("assert_ne", moonunit_assert_ne);
+        methods.add_method("assert_ge", moonunit_assert_ge);
+        methods.add_method("assert_gt", moonunit_assert_gt);
+        methods.add_method("assert_le", moonunit_assert_le);
+        methods.add_method("assert_lt", moonunit_assert_lt);
+        methods.add_method("assert_true", moonunit_assert_true);
+        methods.add_method("assert_false", moonunit_assert_false);
+        methods.add_method("expect_eq", moonunit_expect_eq);
+        methods.add_method("expect_ne", moonunit_expect_ne);
+        methods.add_method("expect_ge", moonunit_expect_ge);
+        methods.add_method("expect_gt", moonunit_expect_gt);
+        methods.add_method("expect_le", moonunit_expect_le);
+        methods.add_method("expect_lt", moonunit_expect_lt);
+        methods.add_method("expect_true", moonunit_expect_true);
+        methods.add_method("expect_false", moonunit_expect_false);
     }
 }
 
 fn moonunit_test<'lua, 'runner>(
     lua: &'lua mlua::Lua,
-    this: &'runner mut RunContext,
+    this: &'runner RunContext,
     (suite, name, test): (String, String, mlua::Function)
 ) -> mlua::Result<()> {
     // Get line number information about the provided function.
@@ -230,7 +230,7 @@ fn moonunit_test<'lua, 'runner>(
 
 fn moonunit_assert_eq<'lua, 'runner>(
     _lua: &'lua mlua::Lua,
-    _this: &'runner mut RunContext,
+    _this: &'runner RunContext,
     (lhs, rhs): (mlua::Value, mlua::Value)
 ) -> mlua::Result<()> {
     if let (mlua::Value::Table(lhs), mlua::Value::Table(rhs)) = (&lhs, &rhs) {
@@ -275,7 +275,7 @@ fn moonunit_assert_eq<'lua, 'runner>(
 
 fn moonunit_assert_ne<'lua, 'runner>(
     _lua: &'lua mlua::Lua,
-    _this: &'runner mut RunContext,
+    _this: &'runner RunContext,
     (lhs, rhs): (mlua::Value, mlua::Value)
 ) -> mlua::Result<()> {
     if let (mlua::Value::Table(lhs), mlua::Value::Table(rhs)) = (&lhs, &rhs) {
@@ -302,7 +302,7 @@ fn moonunit_assert_ne<'lua, 'runner>(
 
 fn moonunit_assert_ge<'lua, 'runner>(
     _lua: &'lua mlua::Lua,
-    _this: &'runner mut RunContext,
+    _this: &'runner RunContext,
     (lhs, rhs): (mlua::Value, mlua::Value)
 ) -> mlua::Result<()> {
     if OrderedLuaValue(lhs.clone()).cmp(&OrderedLuaValue(rhs.clone())) == std::cmp::Ordering::Less {
@@ -320,7 +320,7 @@ fn moonunit_assert_ge<'lua, 'runner>(
 
 fn moonunit_assert_gt<'lua, 'runner>(
     _lua: &'lua mlua::Lua,
-    _this: &'runner mut RunContext,
+    _this: &'runner RunContext,
     (lhs, rhs): (mlua::Value, mlua::Value)
 ) -> mlua::Result<()> {
     if OrderedLuaValue(lhs.clone()).cmp(&OrderedLuaValue(rhs.clone())) == std::cmp::Ordering::Greater {
@@ -338,7 +338,7 @@ fn moonunit_assert_gt<'lua, 'runner>(
 
 fn moonunit_assert_le<'lua, 'runner>(
     _lua: &'lua mlua::Lua,
-    _this: &'runner mut RunContext,
+    _this: &'runner RunContext,
     (lhs, rhs): (mlua::Value, mlua::Value)
 ) -> mlua::Result<()> {
     if OrderedLuaValue(lhs.clone()).cmp(&OrderedLuaValue(rhs.clone())) == std::cmp::Ordering::Greater {
@@ -356,7 +356,7 @@ fn moonunit_assert_le<'lua, 'runner>(
 
 fn moonunit_assert_lt<'lua, 'runner>(
     _lua: &'lua mlua::Lua,
-    _this: &'runner mut RunContext,
+    _this: &'runner RunContext,
     (lhs, rhs): (mlua::Value, mlua::Value)
 ) -> mlua::Result<()> {
     if OrderedLuaValue(lhs.clone()).cmp(&OrderedLuaValue(rhs.clone())) == std::cmp::Ordering::Less {
@@ -374,7 +374,7 @@ fn moonunit_assert_lt<'lua, 'runner>(
 
 fn moonunit_assert_true<'lua, 'runner>(
     _lua: &'lua mlua::Lua,
-    _this: &'runner mut RunContext,
+    _this: &'runner RunContext,
     (value,): (mlua::Value,)
 ) -> mlua::Result<()> {
     match &value {
@@ -392,7 +392,7 @@ fn moonunit_assert_true<'lua, 'runner>(
 
 fn moonunit_assert_false<'lua, 'runner>(
     _lua: &'lua mlua::Lua,
-    _this: &'runner mut RunContext,
+    _this: &'runner RunContext,
     (value,): (mlua::Value,)
 ) -> mlua::Result<()> {
     match &value {
@@ -410,7 +410,7 @@ fn moonunit_assert_false<'lua, 'runner>(
 
 fn moonunit_expect_eq<'lua, 'runner>(
     lua: &'lua mlua::Lua,
-    this: &'runner mut RunContext,
+    this: &'runner RunContext,
     (lhs, rhs): (mlua::Value, mlua::Value)
 ) -> mlua::Result<()> {
     let mut expectation_failed = false;
@@ -462,7 +462,7 @@ fn moonunit_expect_eq<'lua, 'runner>(
 
 fn moonunit_expect_ne<'lua, 'runner>(
     lua: &'lua mlua::Lua,
-    this: &'runner mut RunContext,
+    this: &'runner RunContext,
     (lhs, rhs): (mlua::Value, mlua::Value)
 ) -> mlua::Result<()> {
     let mut expectation_failed = false;
@@ -496,7 +496,7 @@ fn moonunit_expect_ne<'lua, 'runner>(
 
 fn moonunit_expect_ge<'lua, 'runner>(
     lua: &'lua mlua::Lua,
-    this: &'runner mut RunContext,
+    this: &'runner RunContext,
     (lhs, rhs): (mlua::Value, mlua::Value)
 ) -> mlua::Result<()> {
     if OrderedLuaValue(lhs.clone()).cmp(&OrderedLuaValue(rhs.clone())) == std::cmp::Ordering::Less {
@@ -518,7 +518,7 @@ fn moonunit_expect_ge<'lua, 'runner>(
 
 fn moonunit_expect_gt<'lua, 'runner>(
     lua: &'lua mlua::Lua,
-    this: &'runner mut RunContext,
+    this: &'runner RunContext,
     (lhs, rhs): (mlua::Value, mlua::Value)
 ) -> mlua::Result<()> {
     if OrderedLuaValue(lhs.clone()).cmp(&OrderedLuaValue(rhs.clone())) != std::cmp::Ordering::Greater {
@@ -540,7 +540,7 @@ fn moonunit_expect_gt<'lua, 'runner>(
 
 fn moonunit_expect_le<'lua, 'runner>(
     lua: &'lua mlua::Lua,
-    this: &'runner mut RunContext,
+    this: &'runner RunContext,
     (lhs, rhs): (mlua::Value, mlua::Value)
 ) -> mlua::Result<()> {
     if OrderedLuaValue(lhs.clone()).cmp(&OrderedLuaValue(rhs.clone())) == std::cmp::Ordering::Greater {
@@ -562,7 +562,7 @@ fn moonunit_expect_le<'lua, 'runner>(
 
 fn moonunit_expect_lt<'lua, 'runner>(
     lua: &'lua mlua::Lua,
-    this: &'runner mut RunContext,
+    this: &'runner RunContext,
     (lhs, rhs): (mlua::Value, mlua::Value)
 ) -> mlua::Result<()> {
     if OrderedLuaValue(lhs.clone()).cmp(&OrderedLuaValue(rhs.clone())) != std::cmp::Ordering::Less {
@@ -584,7 +584,7 @@ fn moonunit_expect_lt<'lua, 'runner>(
 
 fn moonunit_expect_true<'lua, 'runner>(
     lua: &'lua mlua::Lua,
-    this: &'runner mut RunContext,
+    this: &'runner RunContext,
     (value,): (mlua::Value,)
 ) -> mlua::Result<()> {
     let mut expectation_failed = false;
@@ -612,7 +612,7 @@ fn moonunit_expect_true<'lua, 'runner>(
 
 fn moonunit_expect_false<'lua, 'runner>(
     lua: &'lua mlua::Lua,
-    this: &'runner mut RunContext,
+    this: &'runner RunContext,
     (value,): (mlua::Value,)
 ) -> mlua::Result<()> {
     let mut expectation_failed = false;
