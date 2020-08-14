@@ -825,15 +825,15 @@ impl Runner {
     ) -> impl std::iter::Iterator<Item=String> where
         S: AsRef<str>
     {
-        self.inner
-            .borrow()
-            .test_suites
-            .get(suite.as_ref())
-            .unwrap()
-            .tests
-            .keys()       // Iterate the test suite keys (the names of them)
+        self.inner        // Start with our shared inner state
+            .borrow()     // It's in a RefCell, so borrow its contents
+            .test_suites  // From there visit our test suites hash map
+            .get(suite.as_ref())  // look up a specific test suite
+            .unwrap()     // It had better be in there!
+            .tests        // From there visit its tests
+            .keys()       // Iterate the test keys (the names of them)
             .cloned()     // Make copies of each name
-            .collect::<Vec<String>>()  // Push them all into a vector
+            .collect::<Vec<_>>()  // Push them all into a vector
             .into_iter()  // Turn this into an iterator
     }
 
@@ -849,7 +849,7 @@ impl Runner {
             .test_suites
             .keys()       // Iterate the test suite keys (the names of them)
             .cloned()     // Make copies of each name
-            .collect::<Vec<String>>()  // Push them all into a vector
+            .collect::<Vec<_>>()  // Push them all into a vector
             .into_iter()  // Turn this into an iterator
     }
 
