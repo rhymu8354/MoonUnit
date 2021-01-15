@@ -2,8 +2,8 @@
 
 mod runner;
 
-use structopt::StructOpt;
 use std::io::Write;
+use structopt::StructOpt;
 
 #[allow(clippy::doc_markdown)]
 #[structopt(verbatim_doc_comment)]
@@ -39,7 +39,7 @@ struct Opts {
     /// specifying paths to directories containing Lua test files to run
     /// (or other '.moonunit' files) or individual Lua test files to run.
     /// If not specified, the current working directory is used instead.
-    #[structopt(long, default_value=".")]
+    #[structopt(long, default_value = ".")]
     path: std::path::PathBuf,
 
     /// List the names of all tests instead of running them
@@ -68,10 +68,7 @@ struct Opts {
 
 type SelectedTests = std::collections::HashMap<String, std::collections::HashSet<String>>;
 
-fn select_tests(
-    opts: &Opts,
-    runner: &runner::Runner,
-) -> (SelectedTests, usize, usize) {
+fn select_tests(opts: &Opts, runner: &runner::Runner) -> (SelectedTests, usize, usize) {
     let mut selected_tests = std::collections::HashMap::new();
     let mut total_tests = 0;
     let mut total_test_suites = 0;
@@ -81,14 +78,14 @@ fn select_tests(
                 total_test_suites += 1;
                 total_tests += runner.get_test_names(test_suite_name).count();
             }
-        },
+        }
         Some(filter) => {
             println!("Note: Google Test filter = {}", filter);
             for filter in filter.split(':') {
                 total_test_suites += 1;
                 if let Some(delimiter_index) = filter.find('.') {
                     let test_suite_name = &filter[0..delimiter_index];
-                    let test_name = &filter[delimiter_index+1..];
+                    let test_name = &filter[delimiter_index + 1..];
                     if selected_tests
                         .entry(test_suite_name.to_owned())
                         .or_insert_with(std::collections::HashSet::new)
@@ -98,7 +95,7 @@ fn select_tests(
                     }
                 }
             }
-        },
+        }
     };
     (selected_tests, total_tests, total_test_suites)
 }
@@ -123,7 +120,11 @@ fn run_tests(
             println!(
                 "[----------] {} test{} from {}",
                 selected_tests_entry.len(),
-                if selected_tests_entry.len() == 1 { "" } else { "s" },
+                if selected_tests_entry.len() == 1 {
+                    ""
+                } else {
+                    "s"
+                },
                 test_suite_name
             );
         }
@@ -137,32 +138,23 @@ fn run_tests(
             if opts.gtest_list_tests {
                 println!("  {}", test_name);
             } else {
-                println!(
-                    "[ RUN      ] {}.{}",
-                    test_suite_name,
-                    test_name,
-                );
+                println!("[ RUN      ] {}.{}", test_suite_name, test_name,);
                 let error_messages = std::cell::RefCell::new(Vec::new());
                 let test_start_time = std::time::Instant::now();
-                let test_passed = runner.run_test(
-                    &test_suite_name,
-                    &test_name,
-                    |message| error_messages.borrow_mut().push(message)
-                );
+                let test_passed =
+                    runner.run_test(&test_suite_name, &test_name, |message| {
+                        error_messages.borrow_mut().push(message)
+                    });
                 let error_messages = error_messages.borrow();
                 let test_elapsed_time = test_start_time.elapsed().as_millis();
                 if test_passed {
                     passed += 1;
                     println!(
                         "[       OK ] {}.{} ({} ms)",
-                        test_suite_name,
-                        test_name,
-                        test_elapsed_time,
+                        test_suite_name, test_name, test_elapsed_time,
                     );
                 } else {
-                    failed.push(
-                        format!("{}.{}", test_suite_name, test_name)
-                    );
+                    failed.push(format!("{}.{}", test_suite_name, test_name));
                     if !error_messages.is_empty() {
                         for line in error_messages.iter() {
                             println!("{}", line);
@@ -170,9 +162,7 @@ fn run_tests(
                     }
                     println!(
                         "[  FAILED  ] {}.{} ({} ms)",
-                        test_suite_name,
-                        test_name,
-                        test_elapsed_time,
+                        test_suite_name, test_name, test_elapsed_time,
                     );
                     success = false;
                 }
@@ -184,7 +174,11 @@ fn run_tests(
                 println!(
                     "[----------] {} test{} from {} ({} ms total)\n",
                     selected_tests_entry.len(),
-                    if selected_tests_entry.len() == 1 { "" } else { "s" },
+                    if selected_tests_entry.len() == 1 {
+                        ""
+                    } else {
+                        "s"
+                    },
                     test_suite_name,
                     test_suite_elapsed_time,
                 );
@@ -203,7 +197,10 @@ fn app() -> i32 {
     // folder that contains a ".moonunit" file, and configure the runner
     // using it (and any other ".moonunit" files found indirectly).
     let mut runner = runner::Runner::new();
-    for path in opts.path.canonicalize().unwrap()
+    for path in opts
+        .path
+        .canonicalize()
+        .unwrap()
         .ancestors()
         .collect::<Vec<_>>()
         .into_iter()
@@ -212,12 +209,9 @@ fn app() -> i32 {
         let mut possible_configuration_file = path.to_path_buf();
         possible_configuration_file.push(".moonunit");
         if possible_configuration_file.is_file() {
-            runner.configure(
-                &possible_configuration_file,
-                |message| {
-                    eprintln!("{}", message);
-                }
-            )
+            runner.configure(&possible_configuration_file, |message| {
+                eprintln!("{}", message);
+            })
         }
     }
 
@@ -235,7 +229,8 @@ fn app() -> i32 {
         );
         println!("[----------] Global test environment set-up.");
     }
-    let (success, passed, failed, runner_elapsed_time) = run_tests(&opts, &mut runner, &selected_tests);
+    let (success, passed, failed, runner_elapsed_time) =
+        run_tests(&opts, &mut runner, &selected_tests);
     if !opts.gtest_list_tests {
         println!("[----------] Global test environment tear-down");
         println!(
@@ -259,10 +254,7 @@ fn app() -> i32 {
             if failed.len() == 1 { "" } else { "s" },
         );
         for instance in &failed {
-            println!(
-                "[  FAILED  ] {}",
-                instance
-            );
+            println!("[  FAILED  ] {}", instance);
         }
         println!();
         println!(
@@ -276,13 +268,19 @@ fn app() -> i32 {
     if let Some(gtest_output) = opts.gtest_output {
         if let Some(report_path) = gtest_output.strip_prefix("xml:") {
             if let Ok(mut report_file) = std::fs::File::create(report_path) {
-                report_file.write_all(runner.get_report().as_bytes()).unwrap();
+                report_file
+                    .write_all(runner.get_report().as_bytes())
+                    .unwrap();
             }
         }
     }
 
     // Done.
-    if success { 0 } else { 1 }
+    if success {
+        0
+    } else {
+        1
+    }
 }
 
 fn main() {
