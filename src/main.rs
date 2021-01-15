@@ -274,8 +274,7 @@ fn app() -> i32 {
 
     // Generate report if requested.
     if let Some(gtest_output) = opts.gtest_output {
-        if gtest_output.starts_with("xml:") {
-            let report_path = &gtest_output[4..];
+        if let Some(report_path) = gtest_output.strip_prefix("xml:") {
             if let Ok(mut report_file) = std::fs::File::create(report_path) {
                 report_file.write_all(runner.get_report().as_bytes()).unwrap();
             }
