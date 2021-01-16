@@ -2,7 +2,10 @@
 
 mod runner;
 
-use std::io::Write;
+use std::{
+    io::Write,
+    usize,
+};
 use structopt::StructOpt;
 
 #[allow(clippy::doc_markdown)]
@@ -194,6 +197,87 @@ fn run_tests(
     (success, passed, failed, runner_elapsed_time)
 }
 
+fn run_tests_prelude(
+    total_tests: usize,
+    total_test_suites: usize,
+) {
+    println!(
+        "[==========] Running {} test{} from {} test suite{}.",
+        total_tests,
+        if total_tests == 1 {
+            ""
+        } else {
+            "s"
+        },
+        total_test_suites,
+        if total_test_suites == 1 {
+            ""
+        } else {
+            "s"
+        }
+    );
+    println!("[----------] Global test environment set-up.");
+}
+
+fn run_tests_conclusion(
+    total_tests: usize,
+    total_test_suites: usize,
+    passed: usize,
+    runner_elapsed_time: u128,
+) {
+    println!("[----------] Global test environment tear-down");
+    println!(
+        "[==========] {} test{} from {} test suite{} ran. ({} ms total)",
+        total_tests,
+        if total_tests == 1 {
+            ""
+        } else {
+            "s"
+        },
+        total_test_suites,
+        if total_test_suites == 1 {
+            ""
+        } else {
+            "s"
+        },
+        runner_elapsed_time,
+    );
+    println!(
+        "[  PASSED  ] {} test{}.",
+        passed,
+        if passed == 1 {
+            ""
+        } else {
+            "s"
+        },
+    );
+}
+
+fn report_failed_tests(failed: &[String]) {
+    println!(
+        "[  FAILED  ] {} test{}, listed below:",
+        failed.len(),
+        if failed.len() == 1 {
+            ""
+        } else {
+            "s"
+        },
+    );
+    for instance in failed {
+        println!("[  FAILED  ] {}", instance);
+    }
+    println!();
+    println!(
+        " {} FAILED TEST{}",
+        failed.len(),
+        if failed.len() == 1 {
+            ""
+        } else {
+            "S"
+        },
+    );
+}
+
 fn app() -> i32 {
     // Parse all command-line options.
     let opts: Opts = Opts::from_args();
@@ -226,76 +310,20 @@ fn app() -> i32 {
 
     // List or run all unit tests.
     if !opts.gtest_list_tests {
-        println!(
-            "[==========] Running {} test{} from {} test suite{}.",
-            total_tests,
-            if total_tests == 1 {
-                ""
-            } else {
-                "s"
-            },
-            total_test_suites,
-            if total_test_suites == 1 {
-                ""
-            } else {
-                "s"
-            }
-        );
-        println!("[----------] Global test environment set-up.");
+        run_tests_prelude(total_tests, total_test_suites);
     }
     let (success, passed, failed, runner_elapsed_time) =
         run_tests(&opts, &mut runner, &selected_tests);
     if !opts.gtest_list_tests {
-        println!("[----------] Global test environment tear-down");
-        println!(
-            "[==========] {} test{} from {} test suite{} ran. ({} ms total)",
+        run_tests_conclusion(
             total_tests,
-            if total_tests == 1 {
-                ""
-            } else {
-                "s"
-            },
             total_test_suites,
-            if total_test_suites == 1 {
-                ""
-            } else {
-                "s"
-            },
-            runner_elapsed_time,
-        );
-        println!(
-            "[  PASSED  ] {} test{}.",
             passed,
-            if passed == 1 {
-                ""
-            } else {
-                "s"
-            },
+            runner_elapsed_time,
         );
     }
     if !failed.is_empty() {
-        println!(
-            "[  FAILED  ] {} test{}, listed below:",
-            failed.len(),
-            if failed.len() == 1 {
-                ""
-            } else {
-                "s"
-            },
-        );
-        for instance in &failed {
-            println!("[  FAILED  ] {}", instance);
-        }
-        println!();
-        println!(
-            " {} FAILED TEST{}",
-            failed.len(),
-            if failed.len() == 1 {
-                ""
-            } else {
-                "S"
-            },
-        );
+        report_failed_tests(&failed);
     }
 
     // Generate report if requested.

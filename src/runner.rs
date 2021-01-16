@@ -207,9 +207,9 @@ impl mlua::UserData for RunContext {
     }
 }
 
-fn moonunit_test<'lua, 'runner>(
-    lua: &'lua mlua::Lua,
-    this: &'runner RunContext,
+fn moonunit_test(
+    lua: &mlua::Lua,
+    this: &RunContext,
     (suite, name, test): (String, String, mlua::Function),
 ) -> mlua::Result<()> {
     // Get line number information about the provided function.
@@ -238,9 +238,9 @@ fn moonunit_test<'lua, 'runner>(
     Ok(())
 }
 
-fn moonunit_assert_eq<'lua, 'runner>(
-    _lua: &'lua mlua::Lua,
-    _this: &'runner RunContext,
+fn moonunit_assert_eq(
+    _lua: &mlua::Lua,
+    _this: &RunContext,
     (lhs, rhs): (mlua::Value, mlua::Value),
 ) -> mlua::Result<()> {
     if let (mlua::Value::Table(lhs), mlua::Value::Table(rhs)) = (&lhs, &rhs) {
@@ -275,9 +275,9 @@ fn moonunit_assert_eq<'lua, 'runner>(
     }
 }
 
-fn moonunit_assert_ne<'lua, 'runner>(
-    _lua: &'lua mlua::Lua,
-    _this: &'runner RunContext,
+fn moonunit_assert_ne(
+    _lua: &mlua::Lua,
+    _this: &RunContext,
     (lhs, rhs): (mlua::Value, mlua::Value),
 ) -> mlua::Result<()> {
     if let (mlua::Value::Table(lhs), mlua::Value::Table(rhs)) = (&lhs, &rhs) {
@@ -301,9 +301,9 @@ fn moonunit_assert_ne<'lua, 'runner>(
     }
 }
 
-fn moonunit_assert_ge<'lua, 'runner>(
-    _lua: &'lua mlua::Lua,
-    _this: &'runner RunContext,
+fn moonunit_assert_ge(
+    _lua: &mlua::Lua,
+    _this: &RunContext,
     (lhs, rhs): (mlua::Value, mlua::Value),
 ) -> mlua::Result<()> {
     if OrderedLuaValue(lhs.clone()).cmp(&OrderedLuaValue(rhs.clone()))
@@ -319,9 +319,9 @@ fn moonunit_assert_ge<'lua, 'runner>(
     }
 }
 
-fn moonunit_assert_gt<'lua, 'runner>(
-    _lua: &'lua mlua::Lua,
-    _this: &'runner RunContext,
+fn moonunit_assert_gt(
+    _lua: &mlua::Lua,
+    _this: &RunContext,
     (lhs, rhs): (mlua::Value, mlua::Value),
 ) -> mlua::Result<()> {
     if OrderedLuaValue(lhs.clone()).cmp(&OrderedLuaValue(rhs.clone()))
@@ -337,9 +337,9 @@ fn moonunit_assert_gt<'lua, 'runner>(
     }
 }
 
-fn moonunit_assert_le<'lua, 'runner>(
-    _lua: &'lua mlua::Lua,
-    _this: &'runner RunContext,
+fn moonunit_assert_le(
+    _lua: &mlua::Lua,
+    _this: &RunContext,
     (lhs, rhs): (mlua::Value, mlua::Value),
 ) -> mlua::Result<()> {
     if OrderedLuaValue(lhs.clone()).cmp(&OrderedLuaValue(rhs.clone()))
@@ -355,9 +355,9 @@ fn moonunit_assert_le<'lua, 'runner>(
     }
 }
 
-fn moonunit_assert_lt<'lua, 'runner>(
-    _lua: &'lua mlua::Lua,
-    _this: &'runner RunContext,
+fn moonunit_assert_lt(
+    _lua: &mlua::Lua,
+    _this: &RunContext,
     (lhs, rhs): (mlua::Value, mlua::Value),
 ) -> mlua::Result<()> {
     if OrderedLuaValue(lhs.clone()).cmp(&OrderedLuaValue(rhs.clone()))
@@ -373,9 +373,9 @@ fn moonunit_assert_lt<'lua, 'runner>(
     }
 }
 
-fn moonunit_assert_true<'lua, 'runner>(
-    _lua: &'lua mlua::Lua,
-    _this: &'runner RunContext,
+fn moonunit_assert_true(
+    _lua: &mlua::Lua,
+    _this: &RunContext,
     (value,): (mlua::Value,),
 ) -> mlua::Result<()> {
     match &value {
@@ -389,9 +389,9 @@ fn moonunit_assert_true<'lua, 'runner>(
     }
 }
 
-fn moonunit_assert_false<'lua, 'runner>(
-    _lua: &'lua mlua::Lua,
-    _this: &'runner RunContext,
+fn moonunit_assert_false(
+    _lua: &mlua::Lua,
+    _this: &RunContext,
     (value,): (mlua::Value,),
 ) -> mlua::Result<()> {
     match &value {
@@ -403,9 +403,9 @@ fn moonunit_assert_false<'lua, 'runner>(
     }
 }
 
-fn moonunit_expect_eq<'lua, 'runner>(
-    lua: &'lua mlua::Lua,
-    this: &'runner RunContext,
+fn moonunit_expect_eq(
+    lua: &mlua::Lua,
+    this: &RunContext,
     (lhs, rhs): (mlua::Value, mlua::Value),
 ) -> mlua::Result<()> {
     let mut expectation_failed = false;
@@ -445,9 +445,9 @@ fn moonunit_expect_eq<'lua, 'runner>(
     Ok(())
 }
 
-fn moonunit_expect_ne<'lua, 'runner>(
-    lua: &'lua mlua::Lua,
-    this: &'runner RunContext,
+fn moonunit_expect_ne(
+    lua: &mlua::Lua,
+    this: &RunContext,
     (lhs, rhs): (mlua::Value, mlua::Value),
 ) -> mlua::Result<()> {
     let mut expectation_failed = false;
@@ -476,9 +476,9 @@ fn moonunit_expect_ne<'lua, 'runner>(
     Ok(())
 }
 
-fn moonunit_expect_ge<'lua, 'runner>(
-    lua: &'lua mlua::Lua,
-    this: &'runner RunContext,
+fn moonunit_expect_ge(
+    lua: &mlua::Lua,
+    this: &RunContext,
     (lhs, rhs): (mlua::Value, mlua::Value),
 ) -> mlua::Result<()> {
     if OrderedLuaValue(lhs.clone()).cmp(&OrderedLuaValue(rhs.clone()))
@@ -496,9 +496,9 @@ fn moonunit_expect_ge<'lua, 'runner>(
     Ok(())
 }
 
-fn moonunit_expect_gt<'lua, 'runner>(
-    lua: &'lua mlua::Lua,
-    this: &'runner RunContext,
+fn moonunit_expect_gt(
+    lua: &mlua::Lua,
+    this: &RunContext,
     (lhs, rhs): (mlua::Value, mlua::Value),
 ) -> mlua::Result<()> {
     if OrderedLuaValue(lhs.clone()).cmp(&OrderedLuaValue(rhs.clone()))
@@ -516,9 +516,9 @@ fn moonunit_expect_gt<'lua, 'runner>(
     Ok(())
 }
 
-fn moonunit_expect_le<'lua, 'runner>(
-    lua: &'lua mlua::Lua,
-    this: &'runner RunContext,
+fn moonunit_expect_le(
+    lua: &mlua::Lua,
+    this: &RunContext,
     (lhs, rhs): (mlua::Value, mlua::Value),
 ) -> mlua::Result<()> {
     if OrderedLuaValue(lhs.clone()).cmp(&OrderedLuaValue(rhs.clone()))
@@ -536,9 +536,9 @@ fn moonunit_expect_le<'lua, 'runner>(
     Ok(())
 }
 
-fn moonunit_expect_lt<'lua, 'runner>(
-    lua: &'lua mlua::Lua,
-    this: &'runner RunContext,
+fn moonunit_expect_lt(
+    lua: &mlua::Lua,
+    this: &RunContext,
     (lhs, rhs): (mlua::Value, mlua::Value),
 ) -> mlua::Result<()> {
     if OrderedLuaValue(lhs.clone()).cmp(&OrderedLuaValue(rhs.clone()))
@@ -556,9 +556,9 @@ fn moonunit_expect_lt<'lua, 'runner>(
     Ok(())
 }
 
-fn moonunit_expect_true<'lua, 'runner>(
-    lua: &'lua mlua::Lua,
-    this: &'runner RunContext,
+fn moonunit_expect_true(
+    lua: &mlua::Lua,
+    this: &RunContext,
     (value,): (mlua::Value,),
 ) -> mlua::Result<()> {
     let mut expectation_failed = false;
@@ -580,9 +580,9 @@ fn moonunit_expect_true<'lua, 'runner>(
     Ok(())
 }
 
-fn moonunit_expect_false<'lua, 'runner>(
-    lua: &'lua mlua::Lua,
-    this: &'runner RunContext,
+fn moonunit_expect_false(
+    lua: &mlua::Lua,
+    this: &RunContext,
     (value,): (mlua::Value,),
 ) -> mlua::Result<()> {
     let mut expectation_failed = false;
