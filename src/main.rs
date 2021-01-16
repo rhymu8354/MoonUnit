@@ -24,8 +24,8 @@ use structopt::StructOpt;
 /// to individual Lua test files to run, or paths to directories containing
 /// other '.moonunit' files and/or Lua test files, and MoonUnit will discover
 /// all your tests and run them for you, provided you either set the working
-/// directory somewhere inside your project, or specify the project's folder using
-/// the --path command-line argument.  Neat, huh?
+/// directory somewhere inside your project, or specify the project's folder
+/// using the --path command-line argument.  Neat, huh?
 ///
 /// What's really cool is MoonUnit makes its output look like Google Test,
 /// and supports the minimum command-line arguments required by
@@ -66,9 +66,13 @@ struct Opts {
     gtest_also_run_disabled_tests: bool,
 }
 
-type SelectedTests = std::collections::HashMap<String, std::collections::HashSet<String>>;
+type SelectedTests =
+    std::collections::HashMap<String, std::collections::HashSet<String>>;
 
-fn select_tests(opts: &Opts, runner: &runner::Runner) -> (SelectedTests, usize, usize) {
+fn select_tests(
+    opts: &Opts,
+    runner: &runner::Runner,
+) -> (SelectedTests, usize, usize) {
     let mut selected_tests = std::collections::HashMap::new();
     let mut total_tests = 0;
     let mut total_test_suites = 0;
@@ -78,7 +82,7 @@ fn select_tests(opts: &Opts, runner: &runner::Runner) -> (SelectedTests, usize, 
                 total_test_suites += 1;
                 total_tests += runner.get_test_names(test_suite_name).count();
             }
-        }
+        },
         Some(filter) => {
             println!("Note: Google Test filter = {}", filter);
             for filter in filter.split(':') {
@@ -95,7 +99,7 @@ fn select_tests(opts: &Opts, runner: &runner::Runner) -> (SelectedTests, usize, 
                     }
                 }
             }
-        }
+        },
     };
     (selected_tests, total_tests, total_test_suites)
 }
@@ -168,7 +172,8 @@ fn run_tests(
                 }
             }
         }
-        let test_suite_elapsed_time = test_suite_start_time.elapsed().as_millis();
+        let test_suite_elapsed_time =
+            test_suite_start_time.elapsed().as_millis();
         if !opts.gtest_list_tests {
             if let Some(selected_tests_entry) = selected_tests_entry {
                 println!(
@@ -216,16 +221,25 @@ fn app() -> i32 {
     }
 
     // Select which tests to run.
-    let (selected_tests, total_tests, total_test_suites) = select_tests(&opts, &runner);
+    let (selected_tests, total_tests, total_test_suites) =
+        select_tests(&opts, &runner);
 
     // List or run all unit tests.
     if !opts.gtest_list_tests {
         println!(
             "[==========] Running {} test{} from {} test suite{}.",
             total_tests,
-            if total_tests == 1 { "" } else { "s" },
+            if total_tests == 1 {
+                ""
+            } else {
+                "s"
+            },
             total_test_suites,
-            if total_test_suites == 1 { "" } else { "s" }
+            if total_test_suites == 1 {
+                ""
+            } else {
+                "s"
+            }
         );
         println!("[----------] Global test environment set-up.");
     }
@@ -236,22 +250,38 @@ fn app() -> i32 {
         println!(
             "[==========] {} test{} from {} test suite{} ran. ({} ms total)",
             total_tests,
-            if total_tests == 1 { "" } else { "s" },
+            if total_tests == 1 {
+                ""
+            } else {
+                "s"
+            },
             total_test_suites,
-            if total_test_suites == 1 { "" } else { "s" },
+            if total_test_suites == 1 {
+                ""
+            } else {
+                "s"
+            },
             runner_elapsed_time,
         );
         println!(
             "[  PASSED  ] {} test{}.",
             passed,
-            if passed == 1 { "" } else { "s" },
+            if passed == 1 {
+                ""
+            } else {
+                "s"
+            },
         );
     }
     if !failed.is_empty() {
         println!(
             "[  FAILED  ] {} test{}, listed below:",
             failed.len(),
-            if failed.len() == 1 { "" } else { "s" },
+            if failed.len() == 1 {
+                ""
+            } else {
+                "s"
+            },
         );
         for instance in &failed {
             println!("[  FAILED  ] {}", instance);
@@ -260,7 +290,11 @@ fn app() -> i32 {
         println!(
             " {} FAILED TEST{}",
             failed.len(),
-            if failed.len() == 1 { "" } else { "S" },
+            if failed.len() == 1 {
+                ""
+            } else {
+                "S"
+            },
         );
     }
 
@@ -268,9 +302,7 @@ fn app() -> i32 {
     if let Some(gtest_output) = opts.gtest_output {
         if let Some(report_path) = gtest_output.strip_prefix("xml:") {
             if let Ok(mut report_file) = std::fs::File::create(report_path) {
-                report_file
-                    .write_all(runner.get_report().as_bytes())
-                    .unwrap();
+                report_file.write_all(runner.get_report().as_bytes()).unwrap();
             }
         }
     }
