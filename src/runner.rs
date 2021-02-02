@@ -753,7 +753,8 @@ impl Runner {
                     );
                 } else {
                     for path in std::fs::read_dir(&search_path)
-                        .unwrap()
+                        .into_iter()
+                        .flatten()
                         .map(|dir_entry| dir_entry.unwrap().path())
                         .filter(|path| {
                             path.extension()
